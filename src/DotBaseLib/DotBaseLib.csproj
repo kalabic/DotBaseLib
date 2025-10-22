@@ -12,6 +12,7 @@
     <RepositoryUrl>https://github.com/kalabic/DotBaseLib</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RootNamespace>DotBase</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
