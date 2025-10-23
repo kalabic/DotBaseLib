@@ -55,17 +55,20 @@ public class GenericEventCollection
 
     public void AddEvent<TMessage>(IEventContainer<TMessage> handler)
     {
-        if (EventExists<TMessage>())
-        {
-            throw new ArgumentException($"Attempted to add a duplicated event type in {nameof(GenericEventCollection)}.");
-        }
-
         lock (_lock)
         {
-            if (!IsDisposed)
+            if (IsDisposed)
             {
-                _collection.Add(handler);
+                return;
             }
+            
+            bool exists = _collection.Any(it => it is IEventContainer<TMessage>);
+            if (exists)
+            {
+                throw new ArgumentException($"Attempted to add a duplicated event type in {nameof(GenericEventCollection)}.");
+            }
+
+            _collection.Add(handler);
         }
     }
 

@@ -1,4 +1,6 @@
-﻿namespace DotBase.Event;
+﻿using DotBase.Event;
+
+namespace DotBase.Cancellation;
 
 
 public class CancellationEvent { }

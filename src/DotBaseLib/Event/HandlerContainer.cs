@@ -4,7 +4,7 @@
 public class HandlerContainer<TMessage>
     : IHandlerContainer
 {
-    public readonly EventHandler<TMessage> _handler;
+    private readonly EventHandler<TMessage> _handler;
 
     public HandlerContainer(EventHandler<TMessage> eventHandler)
     {

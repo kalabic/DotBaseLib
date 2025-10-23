@@ -1,4 +1,6 @@
-﻿using DotBase.Core;
+﻿using DotBase.AsyncEvent;
+using DotBase.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace DotBase.Event;
 
@@ -41,6 +43,33 @@ public class EventContainer<TMessage>
 #pragma warning restore CS8604 // Possible null reference argument.
             return myEvent is not null;
         }
+
+        return false;
+    }
+
+    [Experimental("DotBase_InvokeAsync")]
+    public virtual bool InvokeAsync()
+        => InvokeAsync(null, default);
+
+    [Experimental("DotBase_InvokeAsync")]
+    public virtual bool InvokeAsync(TMessage? msg)
+        => InvokeAsync(null, msg);
+
+    [Experimental("DotBase_InvokeAsync")]
+    public virtual bool InvokeAsync(object? sender, TMessage? msg)
+    {
+        if (!IsDisposed && _event is not null)
+        {
+            var myEvent = Extensions.Async(_event);
+
+#pragma warning disable CS8604 // Possible null reference argument.
+#pragma warning disable CS8620 // Argument cannot be used for parameter due to differences in the nullability of reference types.
+            myEvent?.InvokeAsync(sender, msg);
+#pragma warning restore CS8620 // Argument cannot be used for parameter due to differences in the nullability of reference types.
+#pragma warning restore CS8604 // Possible null reference argument.
+            return true;
+        }
+
         return false;
     }
 

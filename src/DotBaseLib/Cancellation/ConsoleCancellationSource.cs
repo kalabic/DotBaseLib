@@ -2,7 +2,15 @@
 using DotBase.Event;
 using DotBase.Log;
 
-namespace DotBase.Tools;
+namespace DotBase.Cancellation;
+
+
+//------------------------------------------------------------------------------------------------
+//
+// An additional reminder to myself that EventContainer.InvokeAsync() methods don't look finished.
+//
+#pragma warning disable DotBase_InvokeAsync
+
 
 
 /// <summary>
@@ -21,7 +29,7 @@ public class ConsoleCancellationSource
 
     public CancellationToken Token { get { return _cts.Token; } }
 
-    public IEventProducer<CancellationEvent> Cancelled { get { return _cancelledEvent; } }
+    public IEventProducer<CancellationEvent> CancellationEvent { get { return _cancelledEvent; } }
 
     // Private data >>
 
@@ -91,13 +99,13 @@ public class ConsoleCancellationSource
 
     private void HandleCancelKeyPress(object? s, ConsoleCancelEventArgs ev)
     {
-        LiteLog.Log.SystemEvent("Console event (Ctrl-C)");
+        LiteLog.Log.SystemEvent("Cancellation event (Ctrl-C)");
         lock (_disposeLock)
         {
             if (TryBeginCancel())
             {
                 _cts.CancelAsync();
-                _cancelledEvent.Invoke();
+                _cancelledEvent.InvokeAsync();
             }
             ev.Cancel = _continueExec;
         }
@@ -108,7 +116,7 @@ public class ConsoleCancellationSource
         if (TryBeginCancel())
         {
             _cts.Cancel();
-            _cancelledEvent.Invoke();
+            _cancelledEvent.InvokeAsync();
         }
     }
 
@@ -117,7 +125,7 @@ public class ConsoleCancellationSource
         if (TryBeginCancel())
         {
             _cts.Cancel(throwOnFirstException);
-            _cancelledEvent.Invoke();
+            _cancelledEvent.InvokeAsync();
         }
     }
 
@@ -126,7 +134,7 @@ public class ConsoleCancellationSource
         if (TryBeginCancel())
         {
             var task = _cts.CancelAsync();
-            _cancelledEvent.Invoke();
+            _cancelledEvent.InvokeAsync();
             return task;
         }
         else
