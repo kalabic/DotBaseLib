@@ -68,9 +68,8 @@ namespace DotBase.AsyncEvent
         {
             return (sender, eventArgs) =>
             {
-                var delegates = eventHandler.GetInvocationList().Cast<EventHandler>();
-                var tasks = delegates.Select(it => Task.Run(() => it.Invoke(sender, eventArgs)));
-                return Task.WhenAll(tasks);
+                eventHandler(sender, eventArgs);
+                return Task.CompletedTask;
             };
         }
 
@@ -85,9 +84,8 @@ namespace DotBase.AsyncEvent
         {
             return (sender, eventArgs) =>
             {
-                var delegates = eventHandler.GetInvocationList().Cast<EventHandler<TEventArgs>>();
-                var tasks = delegates.Select(it => Task.Run(() => it.Invoke(sender, eventArgs)));
-                return Task.WhenAll(tasks);
+                eventHandler(sender, eventArgs);
+                return Task.CompletedTask;
             };
         }
 

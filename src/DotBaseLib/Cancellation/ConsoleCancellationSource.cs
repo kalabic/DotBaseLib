@@ -5,14 +5,6 @@ using DotBase.Log;
 namespace DotBase.Cancellation;
 
 
-//------------------------------------------------------------------------------------------------
-//
-// An additional reminder to myself that EventContainer.InvokeAsync() methods don't look finished.
-//
-#pragma warning disable DotBase_InvokeAsync
-
-
-
 /// <summary>
 /// 
 /// Triggers cancellation only once until object state is reset again using <see cref="Reset(bool)"/>.
@@ -22,8 +14,6 @@ public class ConsoleCancellationSource
     : DisposableBase
 {
     // Public properties >>
-
-    public bool ContinueExec { get { return _continueExec; } set { _continueExec = value; } }
 
     public bool IsCancellationRequested { get { return _cts.IsCancellationRequested; } }
 
@@ -45,8 +35,6 @@ public class ConsoleCancellationSource
     /// 
     /// </summary>
     private readonly object _disposeLock = new object();
-
-    private bool _continueExec;
 
     private CancellationEventProducer _cancelledEvent;
 
@@ -71,6 +59,7 @@ public class ConsoleCancellationSource
             {
                 Unregister();
                 _cts.Dispose();
+                _cancelledEvent.Dispose();
                 base.Dispose(disposing);
                 return;
             }
@@ -85,7 +74,6 @@ public class ConsoleCancellationSource
             if (!IsDisposed)
             {
                 _isCancelled = 0;
-                _continueExec = continueExec;
                 _cts.Dispose();
                 _cts = new CancellationTokenSource();
             }
@@ -105,18 +93,21 @@ public class ConsoleCancellationSource
             if (TryBeginCancel())
             {
                 _cts.CancelAsync();
-                _cancelledEvent.InvokeAsync();
+                _cancelledEvent.Invoke();
             }
-            ev.Cancel = _continueExec;
+
+            // Setting this to FALSE creates a DEADLOCK when Visual Studio 2022 debugger is attached??
+            // (If true it means current process should continue when signal handler returns)
+            ev.Cancel = true;
         }
     }
 
-    public void Cancel() 
+    public void Cancel()
     {
         if (TryBeginCancel())
         {
             _cts.Cancel();
-            _cancelledEvent.InvokeAsync();
+            _cancelledEvent.Invoke();
         }
     }
 
@@ -125,7 +116,7 @@ public class ConsoleCancellationSource
         if (TryBeginCancel())
         {
             _cts.Cancel(throwOnFirstException);
-            _cancelledEvent.InvokeAsync();
+            _cancelledEvent.Invoke();
         }
     }
 
@@ -134,13 +125,18 @@ public class ConsoleCancellationSource
         if (TryBeginCancel())
         {
             var task = _cts.CancelAsync();
-            _cancelledEvent.InvokeAsync();
+            _cancelledEvent.Invoke();
             return task;
         }
         else
         {
             return Task.CompletedTask;
         }
+    }
+
+    public bool WaitOne(int miliseconds = -1)
+    {
+        return _cts.Token.WaitHandle.WaitOne(miliseconds);
     }
 
 
