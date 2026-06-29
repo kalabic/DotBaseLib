@@ -9,6 +9,8 @@ namespace DotBase.Log;
 )]
 internal sealed class DisposableEventSource : EventSource
 {
+    public static readonly string NAME = "DotBase.Disposal";
+
     public static readonly DisposableEventSource Log = new();
 
     private DisposableEventSource() : base() { }

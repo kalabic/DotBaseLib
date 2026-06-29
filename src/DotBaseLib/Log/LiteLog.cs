@@ -4,7 +4,10 @@ using static DotBase.Log.ILiteLog;
 namespace DotBase.Log;
 
 
-[EventSource(Name = "DotBase.Log.LiteLog")]
+[EventSource(
+    Name = "DotBase.Log.LiteLog",
+    Guid = "6E2F1248-AAB0-473C-8719-321BC64D19DD"
+)]
 public class LiteLog
     : EventSource
     , ILiteLog
