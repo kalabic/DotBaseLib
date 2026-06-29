@@ -5,14 +5,14 @@ namespace DotBase.Log;
 
 
 [EventSource(
-    Name = "DotBase.Log.LiteLog",
+    Name = NAME,
     Guid = "6E2F1248-AAB0-473C-8719-321BC64D19DD"
 )]
 public class LiteLog
     : EventSource
     , ILiteLog
 {
-    public static readonly string NAME = "DotBase.Log.LiteLog";
+    public const string NAME = "DotBase.Logging";
 
     public static ILiteLog Log { get; } = new LiteLog();
 
@@ -47,6 +47,12 @@ public class LiteLog
     public void Info(string message)
     {
         WriteEvent(4, message);
+    }
+
+    [Event(8, Message = "Notice: {0}", Level = EventLevel.LogAlways)]
+    public void Notice(string message)
+    {
+        WriteEvent(8, message);
     }
 
     [Event(5, Message = "Event: {0} - {1}", Level = EventLevel.Verbose)]

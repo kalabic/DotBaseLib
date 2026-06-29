@@ -4,12 +4,12 @@ namespace DotBase.Log;
 
 
 [EventSource(
-    Name = "DotBase.Disposal",
+    Name = NAME,
     Guid = "EE36453D-21FD-4FAD-B8C0-44BDD57E0EF8"
 )]
 internal sealed class DisposableEventSource : EventSource
 {
-    public static readonly string NAME = "DotBase.Disposal";
+    public const string NAME = "DotBase.Disposal";
 
     public static readonly DisposableEventSource Log = new();
 
