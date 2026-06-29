@@ -45,7 +45,7 @@ public class GenericEventCollection
                     }
                     catch (Exception ex)
                     {
-                        _log?.ExceptionOccured($"Exception during Dispose() of an item (index:{i}) in {nameof(GenericEventCollection)}.", ex);
+                        _log?.ExceptionOccurred($"Exception during Dispose() of an item (index:{i}) in {nameof(GenericEventCollection)}.", ex);
                     }
                 }
             }

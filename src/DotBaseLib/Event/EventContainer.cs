@@ -75,7 +75,7 @@ public class EventContainer<TMessage>
 #pragma warning restore CS8620 // Argument cannot be used for parameter due to differences in the nullability of reference types.
                 task.ContinueWith(t =>
                 {
-                    LiteLog.Log.ExceptionOccured("Unhandled exception in async event handler.", t.Exception!);
+                    LiteLog.Log.ExceptionOccurred("Unhandled exception in async event handler.", t.Exception!);
                 }, TaskContinuationOptions.OnlyOnFaulted);
             }
             myEvent?.Invoke(sender, msg);

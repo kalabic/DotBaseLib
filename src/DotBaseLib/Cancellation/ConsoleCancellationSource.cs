@@ -1,6 +1,7 @@
 ﻿using DotBase.Core;
 using DotBase.Event;
 using DotBase.Log;
+using static DotBase.Log.ILiteLog;
 
 namespace DotBase.Cancellation;
 
@@ -87,7 +88,7 @@ public class ConsoleCancellationSource
 
     private void HandleCancelKeyPress(object? s, ConsoleCancelEventArgs ev)
     {
-        LiteLog.Log.SystemEvent("Cancellation event (Ctrl-C)");
+        LiteLog.Log.SystemEvent(SystemE.Cancellation, "Cancellation event by a key press (Ctrl-C)");
         lock (_disposeLock)
         {
             if (TryBeginCancel())
