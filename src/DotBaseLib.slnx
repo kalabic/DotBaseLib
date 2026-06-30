@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="DotBaseLib/DotBaseLib.csproj" />
+  <Project Path="DotBaseTestApp/DotBaseTestApp.csproj" />
+  <Project Path="DotBaseTestSetup/DotBaseTestSetup.csproj" />
+  <Project Path="DotBaseWinLib/DotBaseWinLib.csproj" />
+</Solution>
