@@ -57,7 +57,7 @@ public class ConsoleInfo : InfoLog
 
     public EventLevel EventLevel { get { return _level; } set { _level = value; } }
 
-    private readonly LiteConsole _console;
+    private readonly ITextConsole _console;
 
     private EventLevel _level;
 
@@ -67,7 +67,7 @@ public class ConsoleInfo : InfoLog
         _level = eventLevel;
     }
 
-    public ConsoleInfo(LiteConsole console, EventLevel eventLevel = EventLevel.Error)
+    public ConsoleInfo(ITextConsole console, EventLevel eventLevel = EventLevel.Error)
     {
         ArgumentNullException.ThrowIfNull(console, nameof(console));
         _console = console;
