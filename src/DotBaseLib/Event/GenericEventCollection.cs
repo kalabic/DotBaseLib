@@ -11,13 +11,13 @@ public class GenericEventCollection
 {
     protected readonly object _lock = new();
 
-    protected readonly ILiteLog? _log;
+    protected readonly InfoLog? _log;
 
     // For 10-15 items list is just fine.
     private readonly List<IEventContainerInstance> _collection = [];
 
 
-    public GenericEventCollection(ILiteLog? log = null)
+    public GenericEventCollection(InfoLog? log = null)
     {
         _log = log;
     }
@@ -45,7 +45,7 @@ public class GenericEventCollection
                     }
                     catch (Exception ex)
                     {
-                        _log?.ExceptionOccurred($"Exception during Dispose() of an item (index:{i}) in {nameof(GenericEventCollection)}.", ex);
+                        _log?.Warning($"Exception during Dispose() of an item (index:{i}) in {nameof(GenericEventCollection)}.", ex);
                     }
                 }
             }

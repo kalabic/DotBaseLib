@@ -7,7 +7,7 @@ public class EventConsumerCollection
     : GenericEventCollection
     , IEventConsumerCollection
 {
-    public EventConsumerCollection(ILiteLog? log = null)
+    public EventConsumerCollection(InfoLog? log = null)
         : base(log)
     { }
 

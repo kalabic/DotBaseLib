@@ -5,32 +5,32 @@ namespace DotBase.Log;
 
 [EventSource(
     Name = NAME,
-    Guid = "6E2F1248-AAB0-473C-8719-321BC64D19DD"
+    Guid = "0E21492C-6E9A-4869-B9AF-BAF5B9875350"
 )]
-public class LiteLog
+public class LiteDebugLog
     : EventSource
     , InfoLog
 {
-    public const string NAME = "DotBase.Logging";
+    public const string NAME = "DotBase.Logging.Debug";
 
-    public static InfoLog Log { get; } = new LiteLog();
+    public static InfoLog Log { get; } = new LiteDebugLog();
 
-    private LiteLog() : base(LiteLog.NAME) { }
+    private LiteDebugLog() : base(LiteDebugLog.NAME) { }
 
 
     // Notice >>>
 
-    [Event(10, Message = "Notice: {0}", Level = EventLevel.LogAlways)]
+    [Event(1010, Message = "Notice: {0}", Level = EventLevel.LogAlways)]
     public void Notice(string message)
     {
-        WriteEvent(10, message);
+        WriteEvent(1010, message);
     }
 
 
-    [Event(11, Message = "Notice: {0} - {1}", Level = EventLevel.LogAlways)]
+    [Event(1011, Message = "Notice: {0} - {1}", Level = EventLevel.LogAlways)]
     public void NoticeException(string message, string exception)
     {
-        WriteEvent(11, message, exception);
+        WriteEvent(1011, message, exception);
     }
 
 
@@ -43,17 +43,17 @@ public class LiteLog
 
     // Critical >>>
 
-    [Event(20, Message = "Critical: {0}", Level = EventLevel.Critical)]
+    [Event(1020, Message = "Critical: {0}", Level = EventLevel.Critical)]
     public void Critical(string message)
     {
-        WriteEvent(20, message);
+        WriteEvent(1020, message);
     }
 
 
-    [Event(21, Message = "Critical: {0} - {1}", Level = EventLevel.Critical)]
+    [Event(1021, Message = "Critical: {0} - {1}", Level = EventLevel.Critical)]
     public void CriticalException(string message, string exception)
     {
-        WriteEvent(21, message, exception);
+        WriteEvent(1021, message, exception);
     }
 
 
@@ -66,17 +66,17 @@ public class LiteLog
 
     // Error >>>
 
-    [Event(30, Message = "Error: {0}", Level = EventLevel.Error)]
+    [Event(1030, Message = "Error: {0}", Level = EventLevel.Error)]
     public void Error(string message)
     {
-        WriteEvent(30, message);
+        WriteEvent(1030, message);
     }
 
 
-    [Event(31, Message = "Error: {0} - {1}", Level = EventLevel.Error)]
+    [Event(1031, Message = "Error: {0} - {1}", Level = EventLevel.Error)]
     public void ErrorException(string message, string exception)
     {
-        WriteEvent(31, message, exception);
+        WriteEvent(1031, message, exception);
     }
 
 
@@ -89,17 +89,17 @@ public class LiteLog
 
     // Warning >>>
 
-    [Event(40, Message = "Warning: {0}", Level = EventLevel.Warning)]
+    [Event(1040, Message = "Warning: {0}", Level = EventLevel.Warning)]
     public void Warning(string message)
     {
-        WriteEvent(40, message);
+        WriteEvent(1040, message);
     }
 
 
-    [Event(41, Message = "Warning: {0} - {1}", Level = EventLevel.Warning)]
+    [Event(1041, Message = "Warning: {0} - {1}", Level = EventLevel.Warning)]
     public void WarningException(string message, string exception)
     {
-        WriteEvent(41, message, exception);
+        WriteEvent(1041, message, exception);
     }
 
 
@@ -112,17 +112,17 @@ public class LiteLog
 
     // Info >>>
 
-    [Event(50, Message = "Info: {0}", Level = EventLevel.Informational)]
+    [Event(1050, Message = "Info: {0}", Level = EventLevel.Informational)]
     public void Info(string message)
     {
-        WriteEvent(50, message);
+        WriteEvent(1050, message);
     }
 
 
-    [Event(51, Message = "Info: {0} - {1}", Level = EventLevel.Informational)]
+    [Event(1051, Message = "Info: {0} - {1}", Level = EventLevel.Informational)]
     public void InfoException(string message, string exception)
     {
-        WriteEvent(51, message, exception);
+        WriteEvent(1051, message, exception);
     }
 
 
@@ -135,17 +135,17 @@ public class LiteLog
 
     // Event >>>
 
-    [Event(60, Message = "Event: {0} - {1}", Level = EventLevel.Verbose)]
+    [Event(1060, Message = "Event: {0} - {1}", Level = EventLevel.Verbose)]
     public void Event(string eventType, string message)
     {
-        WriteEvent(60, eventType, message);
+        WriteEvent(1060, eventType, message);
     }
 
 
-    [Event(61, Message = "Event: {0} - {1} - {2}", Level = EventLevel.Verbose)]
+    [Event(1061, Message = "Event: {0} - {1} - {2}", Level = EventLevel.Verbose)]
     public void EventObject(string eventType, string message, string objectType)
     {
-        WriteEvent(61, eventType, message, objectType);
+        WriteEvent(1061, eventType, message, objectType);
     }
 
 

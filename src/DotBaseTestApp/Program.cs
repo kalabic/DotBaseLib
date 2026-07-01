@@ -22,7 +22,16 @@ public partial class Program
 
         ExitSource.WaitOne();
 
-        Console.WriteLine("DONE");
-        log.Info("DONE");
+        TestNullException(log, "Testing null exception.", null);
+
+        Console.WriteLine("Finished");
+        log.Info("Finished");
+    }
+
+    private static void TestNullException(InfoLog log, string message, Exception? ex)
+    {
+#pragma warning disable CS8604 // Possible null reference argument.
+        log.Warning(message, ex);
+#pragma warning restore CS8604 // Possible null reference argument.
     }
 }

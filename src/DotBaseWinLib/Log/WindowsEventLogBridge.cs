@@ -56,6 +56,24 @@ public static class WindowsEventLogBridge
     }
 
 
+    public static IDisposable EnableDebug(
+        string eventSourceName,
+        IEnumerable<EventLevel>? allowedLevels = null)
+    {
+        ValidateWindowsEventLogSourceName(eventSourceName, nameof(eventSourceName));
+
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException($"{nameof(EnableDebug)} is only supported on Windows.");
+        }
+
+        return new WindowsEventLogBridgeListener(
+            windowsEventLogSourceName: eventSourceName,
+            dotNetEventSourceNames: [LiteDebugLog.NAME],
+            allowedLevels: allowedLevels);
+    }
+
+
     private static void ValidateWindowsEventLogSourceName(string eventSourceName, string parameterName)
     {
         if (String.IsNullOrWhiteSpace(eventSourceName))
