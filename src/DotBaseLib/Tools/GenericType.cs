@@ -1,6 +1,9 @@
 ﻿namespace DotBase.Tools;
 
 
+using System.Runtime.CompilerServices;
+
+
 /// <summary>
 /// 
 /// Enable the JIT to see GenericType<byte>.IsXYZ is always true, and it will
@@ -25,6 +28,11 @@ public static class GenericType<T>
 
     public static readonly bool IsInt = typeof(T) == typeof(int);
 
+    /// <summary>
+    /// Alias for <see cref="IsByte"/> using the CLR type name for <see cref="byte"/>.
+    /// </summary>
+    public static readonly bool IsUInt8 = typeof(T) == typeof(byte);
+
     public static readonly bool IsUInt = typeof(T) == typeof(uint);
 
     public static readonly bool IsNInt = typeof(T) == typeof(nint);
@@ -42,4 +50,20 @@ public static class GenericType<T>
     public static readonly bool IsUnmanaged 
         = IsBool || IsByte || IsSByte || IsChar || IsDecimal || IsDouble || IsFloat ||
           IsInt || IsUInt || IsNInt || IsNUInt || IsLong || IsULong || IsShort || IsUShort;
+
+    /// <summary>
+    /// Gets the size, in bytes, of an unmanaged <typeparamref name="T"/> value.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when <typeparamref name="T"/> is a reference type or contains references.
+    /// </exception>
+    public static int Size()
+    {
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            throw new InvalidOperationException($"{typeof(T)} must be unmanaged.");
+        }
+
+        return Unsafe.SizeOf<T>();
+    }
 }
