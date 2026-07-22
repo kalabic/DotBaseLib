@@ -17,6 +17,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="**\README.md" />
+
     <None Include="..\..\doc\package\README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
