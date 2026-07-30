@@ -31,6 +31,10 @@ internal static class IntegralNumericConversion<TSource, TDestination>
         typeof(TDestination) == typeof(uint) ||
         typeof(TDestination) == typeof(ulong);
 
+    /// <summary>
+    /// Same-type identity is BitCast; integer↔integer identity widen/narrow uses
+    /// <see cref="ConvertInteger"/> (no double). Scale/bias and float paths use double.
+    /// </summary>
     internal static TDestination Convert(
         TSource source,
         in IntegralConversion conversion)
@@ -41,6 +45,7 @@ internal static class IntegralNumericConversion<TSource, TDestination>
             return Unsafe.BitCast<TSource, TDestination>(source);
         }
 
+        // Integer widen/narrow without scale/bias: stay in integer domain.
         if (conversion.IsIdentity &&
             (SourceIsSignedInteger || SourceIsUnsignedInteger) &&
             (DestinationIsSignedInteger || DestinationIsUnsignedInteger))

@@ -4,8 +4,13 @@ using System.Runtime.InteropServices;
 namespace DotBase.Integral.Internal;
 
 
+/// <summary>
+/// Bare pointer bulk ops. Callers own validity of ranges.
+/// </summary>
 internal static unsafe class IntegralByteMemory
 {
+    private const nuint StackAllocationByteCount = 512;
+
     internal static void Copy(
         byte* source,
         byte* destination,
@@ -40,20 +45,50 @@ internal static unsafe class IntegralByteMemory
         Debug.Assert(source is not null);
         Debug.Assert(destination is not null);
 
-        if (destination < source)
+        if (!Overlaps(source, destination, byteCount))
         {
-            for (nuint index = 0; index < byteCount; ++index)
-            {
-                destination[index] = source[index];
-            }
+            Buffer.MemoryCopy(
+                source,
+                destination,
+                (ulong)byteCount,
+                (ulong)byteCount);
+            return;
         }
-        else
+
+        // MemoryCopy is memcpy-class (undefined on overlap). Stage through temp.
+        if (byteCount <= StackAllocationByteCount)
         {
-            while (byteCount > 0)
-            {
-                --byteCount;
-                destination[byteCount] = source[byteCount];
-            }
+            byte* stackTemp = stackalloc byte[(int)byteCount];
+            Buffer.MemoryCopy(
+                source,
+                stackTemp,
+                (ulong)byteCount,
+                (ulong)byteCount);
+            Buffer.MemoryCopy(
+                stackTemp,
+                destination,
+                (ulong)byteCount,
+                (ulong)byteCount);
+            return;
+        }
+
+        byte* heapTemp = (byte*)NativeMemory.Alloc(byteCount);
+        try
+        {
+            Buffer.MemoryCopy(
+                source,
+                heapTemp,
+                (ulong)byteCount,
+                (ulong)byteCount);
+            Buffer.MemoryCopy(
+                heapTemp,
+                destination,
+                (ulong)byteCount,
+                (ulong)byteCount);
+        }
+        finally
+        {
+            NativeMemory.Free(heapTemp);
         }
     }
 

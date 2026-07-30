@@ -1,5 +1,6 @@
 using DotBase.Buffers;
 using DotBase.Integral.Internal;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace DotBase.Integral;
@@ -71,15 +72,33 @@ public static unsafe class IntegralMemory
             return;
         }
 
+        if (conversion.IsIdentity &&
+            source.IntegralValueType == destination.IntegralValueType &&
+            source.CountOf.ValueByteCount == destination.CountOf.ValueByteCount)
+        {
+            ByteOrder srcOrder = ResolveByteOrder(source.Format.ByteOrder);
+            ByteOrder dstOrder = ResolveByteOrder(destination.Format.ByteOrder);
+            if (srcOrder != dstOrder)
+            {
+                // Same scalar layout, opposite endian: one-pass reverse-copy.
+                IntegralWire.ReverseCopyLanes(
+                    source.DataPtr,
+                    destination.DataPtr,
+                    valueCount,
+                    source.CountOf.ValueByteCount);
+                return;
+            }
+        }
+
         Dispatch(
             source.DataPtr,
             source.CountOf.ValueByteCount,
             source.IntegralValueType,
-            source.Format.ByteOrder,
+            ResolveByteOrder(source.Format.ByteOrder),
             destination.DataPtr,
             destination.CountOf.ValueByteCount,
             destination.IntegralValueType,
-            destination.Format.ByteOrder,
+            ResolveByteOrder(destination.Format.ByteOrder),
             valueCount,
             conversion);
     }
@@ -160,11 +179,11 @@ public static unsafe class IntegralMemory
                 source.DataPtr,
                 source.CountOf.ValueByteCount,
                 source.IntegralValueType,
-                source.Format.ByteOrder,
+                ResolveByteOrder(source.Format.ByteOrder),
                 destination.DataPtr,
                 destination.CountOf.ValueByteCount,
                 destination.IntegralValueType,
-                destination.Format.ByteOrder,
+                ResolveByteOrder(destination.Format.ByteOrder),
                 valueCount,
                 conversion);
             return;
@@ -194,11 +213,11 @@ public static unsafe class IntegralMemory
                 preserved,
                 source.CountOf.ValueByteCount,
                 source.IntegralValueType,
-                source.Format.ByteOrder,
+                ResolveByteOrder(source.Format.ByteOrder),
                 destination.DataPtr,
                 destination.CountOf.ValueByteCount,
                 destination.IntegralValueType,
-                destination.Format.ByteOrder,
+                ResolveByteOrder(destination.Format.ByteOrder),
                 valueCount,
                 conversion);
         }
@@ -292,11 +311,11 @@ public static unsafe class IntegralMemory
             sourcePtr,
             sourceByteStride,
             source.IntegralValueType,
-            source.Format.ByteOrder,
+            ResolveByteOrder(source.Format.ByteOrder),
             destinationPtr,
             destinationByteStride,
             destination.IntegralValueType,
-            destination.Format.ByteOrder,
+            ResolveByteOrder(destination.Format.ByteOrder),
             valueCount,
             conversion);
     }
@@ -455,6 +474,9 @@ public static unsafe class IntegralMemory
         return false;
     }
 
+    /// <summary>
+    /// Byte orders must already be resolved (Native folded to LE/BE).
+    /// </summary>
     private static void Dispatch(
         byte* source,
         long sourceByteStride,
@@ -467,114 +489,66 @@ public static unsafe class IntegralMemory
         long valueCount,
         in IntegralConversion conversion)
     {
-        switch (sourceByteOrder)
-        {
-            case ByteOrder.Native:
-                DispatchSource<NativeEndianCodec>(
-                    source,
-                    sourceByteStride,
-                    sourceType,
-                    destination,
-                    destinationByteStride,
-                    destinationType,
-                    destinationByteOrder,
-                    valueCount,
-                    conversion);
-                return;
-
-            case ByteOrder.LittleEndian:
-                DispatchSource<LittleEndianCodec>(
-                    source,
-                    sourceByteStride,
-                    sourceType,
-                    destination,
-                    destinationByteStride,
-                    destinationType,
-                    destinationByteOrder,
-                    valueCount,
-                    conversion);
-                return;
-
-            case ByteOrder.BigEndian:
-                DispatchSource<BigEndianCodec>(
-                    source,
-                    sourceByteStride,
-                    sourceType,
-                    destination,
-                    destinationByteStride,
-                    destinationType,
-                    destinationByteOrder,
-                    valueCount,
-                    conversion);
-                return;
-
-            default:
-                throw new ArgumentOutOfRangeException(nameof(sourceByteOrder));
-        }
-    }
-
-    private static void DispatchSource<TSourceEndian>(
-        byte* source,
-        long sourceByteStride,
-        IntegralType sourceType,
-        byte* destination,
-        long destinationByteStride,
-        IntegralType destinationType,
-        ByteOrder destinationByteOrder,
-        long valueCount,
-        in IntegralConversion conversion)
-        where TSourceEndian : struct, IEndianCodec
-    {
         switch (sourceType)
         {
             case IntegralType.UInt8:
-                DispatchDestination<byte, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<byte>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.Int8:
-                DispatchDestination<sbyte, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<sbyte>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.UInt16:
-                DispatchDestination<ushort, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<ushort>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.Int16:
-                DispatchDestination<short, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<short>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.UInt32:
-                DispatchDestination<uint, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<uint>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.Int32:
-                DispatchDestination<int, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<int>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.UInt64:
-                DispatchDestination<ulong, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<ulong>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.Int64:
-                DispatchDestination<long, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<long>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.Float:
-                DispatchDestination<float, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<float>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             case IntegralType.Double:
-                DispatchDestination<double, TSourceEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchDestinationType<double>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride,
                     destinationType, destinationByteOrder, valueCount, conversion);
                 return;
             default:
@@ -583,9 +557,10 @@ public static unsafe class IntegralMemory
         }
     }
 
-    private static void DispatchDestination<TSource, TSourceEndian>(
+    private static void DispatchDestinationType<TSource>(
         byte* source,
         long sourceByteStride,
+        ByteOrder sourceByteOrder,
         byte* destination,
         long destinationByteStride,
         IntegralType destinationType,
@@ -593,104 +568,67 @@ public static unsafe class IntegralMemory
         long valueCount,
         in IntegralConversion conversion)
         where TSource : unmanaged
-        where TSourceEndian : struct, IEndianCodec
-    {
-        switch (destinationByteOrder)
-        {
-            case ByteOrder.Native:
-                DispatchDestinationType<
-                    TSource,
-                    TSourceEndian,
-                    NativeEndianCodec>(
-                    source, sourceByteStride, destination, destinationByteStride,
-                    destinationType, valueCount, conversion);
-                return;
-            case ByteOrder.LittleEndian:
-                DispatchDestinationType<
-                    TSource,
-                    TSourceEndian,
-                    LittleEndianCodec>(
-                    source, sourceByteStride, destination, destinationByteStride,
-                    destinationType, valueCount, conversion);
-                return;
-            case ByteOrder.BigEndian:
-                DispatchDestinationType<
-                    TSource,
-                    TSourceEndian,
-                    BigEndianCodec>(
-                    source, sourceByteStride, destination, destinationByteStride,
-                    destinationType, valueCount, conversion);
-                return;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(destinationByteOrder));
-        }
-    }
-
-    private static void DispatchDestinationType<
-        TSource,
-        TSourceEndian,
-        TDestinationEndian>(
-        byte* source,
-        long sourceByteStride,
-        byte* destination,
-        long destinationByteStride,
-        IntegralType destinationType,
-        long valueCount,
-        in IntegralConversion conversion)
-        where TSource : unmanaged
-        where TSourceEndian : struct, IEndianCodec
-        where TDestinationEndian : struct, IEndianCodec
     {
         switch (destinationType)
         {
             case IntegralType.UInt8:
-                CopyCore<TSource, TSourceEndian, byte, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, byte>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.Int8:
-                CopyCore<TSource, TSourceEndian, sbyte, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, sbyte>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.UInt16:
-                CopyCore<TSource, TSourceEndian, ushort, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, ushort>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.Int16:
-                CopyCore<TSource, TSourceEndian, short, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, short>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.UInt32:
-                CopyCore<TSource, TSourceEndian, uint, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, uint>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.Int32:
-                CopyCore<TSource, TSourceEndian, int, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, int>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.UInt64:
-                CopyCore<TSource, TSourceEndian, ulong, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, ulong>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.Int64:
-                CopyCore<TSource, TSourceEndian, long, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, long>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.Float:
-                CopyCore<TSource, TSourceEndian, float, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, float>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             case IntegralType.Double:
-                CopyCore<TSource, TSourceEndian, double, TDestinationEndian>(
-                    source, sourceByteStride, destination, destinationByteStride,
+                DispatchEndianPair<TSource, double>(
+                    source, sourceByteStride, sourceByteOrder,
+                    destination, destinationByteStride, destinationByteOrder,
                     valueCount, conversion);
                 return;
             default:
@@ -699,11 +637,52 @@ public static unsafe class IntegralMemory
         }
     }
 
-    private static void CopyCore<
-        TSource,
-        TSourceEndian,
-        TDestination,
-        TDestinationEndian>(
+    /// <summary>
+    /// Endian pair chosen once; convert loop has no ByteOrder switch.
+    /// Orders are LE or BE only (Native already resolved).
+    /// </summary>
+    private static void DispatchEndianPair<TSource, TDestination>(
+        byte* source,
+        long sourceByteStride,
+        ByteOrder sourceByteOrder,
+        byte* destination,
+        long destinationByteStride,
+        ByteOrder destinationByteOrder,
+        long valueCount,
+        in IntegralConversion conversion)
+        where TSource : unmanaged
+        where TDestination : unmanaged
+    {
+        if (sourceByteOrder == ByteOrder.LittleEndian)
+        {
+            if (destinationByteOrder == ByteOrder.LittleEndian)
+            {
+                CopyCoreLE_LE<TSource, TDestination>(
+                    source, sourceByteStride, destination, destinationByteStride,
+                    valueCount, conversion);
+                return;
+            }
+
+            CopyCoreLE_BE<TSource, TDestination>(
+                source, sourceByteStride, destination, destinationByteStride,
+                valueCount, conversion);
+            return;
+        }
+
+        if (destinationByteOrder == ByteOrder.LittleEndian)
+        {
+            CopyCoreBE_LE<TSource, TDestination>(
+                source, sourceByteStride, destination, destinationByteStride,
+                valueCount, conversion);
+            return;
+        }
+
+        CopyCoreBE_BE<TSource, TDestination>(
+            source, sourceByteStride, destination, destinationByteStride,
+            valueCount, conversion);
+    }
+
+    private static void CopyCoreLE_LE<TSource, TDestination>(
         byte* source,
         long sourceByteStride,
         byte* destination,
@@ -711,21 +690,16 @@ public static unsafe class IntegralMemory
         long valueCount,
         in IntegralConversion conversion)
         where TSource : unmanaged
-        where TSourceEndian : struct, IEndianCodec
         where TDestination : unmanaged
-        where TDestinationEndian : struct, IEndianCodec
     {
         for (long index = 0; index < valueCount; ++index)
         {
-            TSource sourceValue =
-                IntegralCodec<TSource, TSourceEndian>.Read(source);
+            TSource sourceValue = LoadLE<TSource>(source);
             TDestination destinationValue =
                 IntegralNumericConversion<TSource, TDestination>.Convert(
                     sourceValue,
                     conversion);
-            IntegralCodec<TDestination, TDestinationEndian>.Write(
-                destination,
-                destinationValue);
+            StoreLE(destination, destinationValue);
 
             if (index + 1 < valueCount)
             {
@@ -734,4 +708,205 @@ public static unsafe class IntegralMemory
             }
         }
     }
+
+    private static void CopyCoreLE_BE<TSource, TDestination>(
+        byte* source,
+        long sourceByteStride,
+        byte* destination,
+        long destinationByteStride,
+        long valueCount,
+        in IntegralConversion conversion)
+        where TSource : unmanaged
+        where TDestination : unmanaged
+    {
+        for (long index = 0; index < valueCount; ++index)
+        {
+            TSource sourceValue = LoadLE<TSource>(source);
+            TDestination destinationValue =
+                IntegralNumericConversion<TSource, TDestination>.Convert(
+                    sourceValue,
+                    conversion);
+            StoreBE(destination, destinationValue);
+
+            if (index + 1 < valueCount)
+            {
+                source += sourceByteStride;
+                destination += destinationByteStride;
+            }
+        }
+    }
+
+    private static void CopyCoreBE_LE<TSource, TDestination>(
+        byte* source,
+        long sourceByteStride,
+        byte* destination,
+        long destinationByteStride,
+        long valueCount,
+        in IntegralConversion conversion)
+        where TSource : unmanaged
+        where TDestination : unmanaged
+    {
+        for (long index = 0; index < valueCount; ++index)
+        {
+            TSource sourceValue = LoadBE<TSource>(source);
+            TDestination destinationValue =
+                IntegralNumericConversion<TSource, TDestination>.Convert(
+                    sourceValue,
+                    conversion);
+            StoreLE(destination, destinationValue);
+
+            if (index + 1 < valueCount)
+            {
+                source += sourceByteStride;
+                destination += destinationByteStride;
+            }
+        }
+    }
+
+    private static void CopyCoreBE_BE<TSource, TDestination>(
+        byte* source,
+        long sourceByteStride,
+        byte* destination,
+        long destinationByteStride,
+        long valueCount,
+        in IntegralConversion conversion)
+        where TSource : unmanaged
+        where TDestination : unmanaged
+    {
+        for (long index = 0; index < valueCount; ++index)
+        {
+            TSource sourceValue = LoadBE<TSource>(source);
+            TDestination destinationValue =
+                IntegralNumericConversion<TSource, TDestination>.Convert(
+                    sourceValue,
+                    conversion);
+            StoreBE(destination, destinationValue);
+
+            if (index + 1 < valueCount)
+            {
+                source += sourceByteStride;
+                destination += destinationByteStride;
+            }
+        }
+    }
+
+    /// <summary>
+    /// LE wire → host. Compatible host is a single aligned load; else Swap*.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static T LoadLE<T>(byte* source)
+        where T : unmanaged
+    {
+        if (BitConverter.IsLittleEndian || Unsafe.SizeOf<T>() == 1)
+        {
+            return *(T*)source;
+        }
+
+        T host = default;
+        byte* hostPtr = (byte*)&host;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(hostPtr, source);
+                break;
+            case 4:
+                IntegralWire.Swap4(hostPtr, source);
+                break;
+            case 8:
+                IntegralWire.Swap8(hostPtr, source);
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
+
+        return host;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static T LoadBE<T>(byte* source)
+        where T : unmanaged
+    {
+        if (!BitConverter.IsLittleEndian || Unsafe.SizeOf<T>() == 1)
+        {
+            return *(T*)source;
+        }
+
+        T host = default;
+        byte* hostPtr = (byte*)&host;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(hostPtr, source);
+                break;
+            case 4:
+                IntegralWire.Swap4(hostPtr, source);
+                break;
+            case 8:
+                IntegralWire.Swap8(hostPtr, source);
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
+
+        return host;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreLE<T>(byte* destination, T value)
+        where T : unmanaged
+    {
+        if (BitConverter.IsLittleEndian || Unsafe.SizeOf<T>() == 1)
+        {
+            *(T*)destination = value;
+            return;
+        }
+
+        byte* hostPtr = (byte*)&value;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(destination, hostPtr);
+                return;
+            case 4:
+                IntegralWire.Swap4(destination, hostPtr);
+                return;
+            case 8:
+                IntegralWire.Swap8(destination, hostPtr);
+                return;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreBE<T>(byte* destination, T value)
+        where T : unmanaged
+    {
+        if (!BitConverter.IsLittleEndian || Unsafe.SizeOf<T>() == 1)
+        {
+            *(T*)destination = value;
+            return;
+        }
+
+        byte* hostPtr = (byte*)&value;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(destination, hostPtr);
+                return;
+            case 4:
+                IntegralWire.Swap4(destination, hostPtr);
+                return;
+            case 8:
+                IntegralWire.Swap8(destination, hostPtr);
+                return;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
+    }
+
 }

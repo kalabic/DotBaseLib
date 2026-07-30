@@ -65,6 +65,26 @@ internal static unsafe class IntegralTestData
                 byteOrder));
     }
 
+    /// <summary>
+    /// Allocate storage natural-aligned for scalar wire ops (default 8-byte).
+    /// Caller must <see cref="AlignedFree"/>.
+    /// </summary>
+    internal static byte* AlignedAlloc(int byteCount, int alignment = 8)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(byteCount, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThan(alignment, 1);
+        nuint size = byteCount == 0 ? 1u : (nuint)byteCount;
+        return (byte*)NativeMemory.AlignedAlloc(size, (nuint)alignment);
+    }
+
+    internal static void AlignedFree(byte* pointer)
+    {
+        if (pointer is not null)
+        {
+            NativeMemory.AlignedFree(pointer);
+        }
+    }
+
     internal static void SetNumber(
         in IntegralSpan span,
         long index,

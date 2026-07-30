@@ -1,4 +1,6 @@
-﻿using DotBase.Buffers;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using DotBase.Buffers;
 using DotBase.Integral.Internal;
 
 namespace DotBase.Integral;
@@ -13,6 +15,13 @@ namespace DotBase.Integral;
 /// <see cref="Ptr"/> and <see cref="BytePtr"/> retain the original base pointer.
 /// <see cref="Offset"/> is applied only when calculating <see cref="DataPtr"/> or
 /// the address of an individual value.
+/// </para>
+///
+/// <para>
+/// <b>Alignment:</b> when <see cref="BytePtr"/> is natural-aligned to
+/// <see cref="IntegralCapacity.ValueByteCount"/> and <see cref="Offset"/> is a
+/// multiple of that size, every value address is scalar-aligned. Wire helpers and
+/// compatible host/wire scalar access require that contract.
 /// </para>
 ///
 /// </summary>
@@ -90,20 +99,50 @@ public readonly unsafe struct IntegralSpan
                 nameof(ptr));
         }
 
-        Ptr = ptr;
-        Length = length;
-        Offset = offset;
-        CountOf = new IntegralCapacity(length, ptr.Fmt.ValueType, ptr.Fmt.BlockCapacity);
-        CountOf.ThrowIfArgumentOutOfRange();
+        IntegralCapacity countOf = new(
+            length,
+            ptr.Fmt.ValueType,
+            ptr.Fmt.BlockCapacity);
+        countOf.ThrowIfArgumentOutOfRange();
 
-        if (CountOf.ValueByteCount > 0 &&
-            (offset % CountOf.ValueByteCount) != 0)
+        if (countOf.ValueByteCount > 0 &&
+            (offset % countOf.ValueByteCount) != 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(offset),
                 offset,
                 "The byte offset must be aligned to the scalar value size.");
         }
+
+        // Value addresses must be natural-aligned for wire load/store.
+        if (!ptr.IsNull &&
+            countOf.ValueByteCount > 1 &&
+            (((nuint)ptr.BytePtr + (nuint)offset) %
+             (nuint)countOf.ValueByteCount) != 0)
+        {
+            throw new ArgumentException(
+                "The integral span base address plus offset must be " +
+                "natural-aligned to the scalar value size.",
+                nameof(ptr));
+        }
+
+        this = new IntegralSpan(ptr, offset, length, countOf);
+    }
+
+    /// <summary>
+    /// Trusted slice constructor. Caller must ensure format validity, non-negative
+    /// ranges, null-pointer rules, and value-size alignment.
+    /// </summary>
+    private IntegralSpan(
+        in IntegralPtr ptr,
+        long offset,
+        long length,
+        IntegralCapacity countOf)
+    {
+        Ptr = ptr;
+        Offset = offset;
+        Length = length;
+        CountOf = countOf;
     }
 
     /// <summary> Parameter <paramref name="index"/> is the linear index of an integral value. </summary>
@@ -178,8 +217,9 @@ public readonly unsafe struct IntegralSpan
 
     /// <summary>
     /// Gets a typed pointer to a value at a linear integral-value index.
-    /// The returned pointer may be unaligned and must not be directly dereferenced
-    /// by portable code.
+    /// When the span base is natural-aligned to the scalar size and
+    /// <see cref="Offset"/> is a multiple of that size, the result is
+    /// scalar-aligned and may be dereferenced for compatible host/wire endian.
     /// </summary>
     public T* GetValuePtr<T>(long index)
         where T : unmanaged
@@ -190,8 +230,7 @@ public readonly unsafe struct IntegralSpan
 
     /// <summary>
     /// Gets a typed pointer to a value at the supplied block and within-block indices.
-    /// The returned pointer may be unaligned and must not be directly dereferenced
-    /// by portable code.
+    /// Same alignment contract as <see cref="GetValuePtr{T}"/>.
     /// </summary>
     public T* GetBlockValuePtr<T>(long blockIndex, int blockValueIndex)
         where T : unmanaged
@@ -253,50 +292,99 @@ public readonly unsafe struct IntegralSpan
                 "The subspan must end on a scalar value boundary.");
         }
 
-        return new IntegralSpan(
-            Ptr,
-            checked(Offset + byteOffset),
-            byteLength);
+        // Parent already validated format; build capacity without re-running Format.Validate.
+        long newOffset = checked(Offset + byteOffset);
+        IntegralCapacity countOf = new(
+            byteLength,
+            CountOf.ValueByteCount,
+            CountOf.BlockCapacity);
+        return new IntegralSpan(Ptr, newOffset, byteLength, countOf);
     }
 
     private T ReadScalar<T>(byte* source)
         where T : unmanaged
     {
-        return Format.ByteOrder switch
+        int size = Unsafe.SizeOf<T>();
+        Debug.Assert(
+            size <= 1 || ((nuint)source % (nuint)size) == 0,
+            "IntegralSpan scalar address must be natural-aligned to the value size.");
+
+        // Compatible host/wire (or 1-byte): single aligned load.
+        if (IsHostWireCompatible() || size == 1)
         {
-            ByteOrder.Native => IntegralCodec<T, NativeEndianCodec>.Read(source),
-            ByteOrder.LittleEndian => IntegralCodec<T, LittleEndianCodec>.Read(source),
-            ByteOrder.BigEndian => IntegralCodec<T, BigEndianCodec>.Read(source),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(IntegralFormat.ByteOrder),
-                Format.ByteOrder,
-                "Undefined byte order."),
-        };
+            return *(T*)source;
+        }
+
+        // Opposite endian: size-switch into Swap* → host stack slot.
+        T host = default;
+        byte* hostPtr = (byte*)&host;
+        switch (size)
+        {
+            case 2:
+                IntegralWire.Swap2(hostPtr, source);
+                break;
+            case 4:
+                IntegralWire.Swap4(hostPtr, source);
+                break;
+            case 8:
+                IntegralWire.Swap8(hostPtr, source);
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {size} is not supported.");
+        }
+
+        return host;
     }
 
     private void WriteScalar<T>(byte* destination, T value)
         where T : unmanaged
     {
-        switch (Format.ByteOrder)
+        int size = Unsafe.SizeOf<T>();
+        Debug.Assert(
+            size <= 1 || ((nuint)destination % (nuint)size) == 0,
+            "IntegralSpan scalar address must be natural-aligned to the value size.");
+
+        // Compatible host/wire (or 1-byte): single aligned store.
+        if (IsHostWireCompatible() || size == 1)
         {
-            case ByteOrder.Native:
-                IntegralCodec<T, NativeEndianCodec>.Write(destination, value);
-                break;
-
-            case ByteOrder.LittleEndian:
-                IntegralCodec<T, LittleEndianCodec>.Write(destination, value);
-                break;
-
-            case ByteOrder.BigEndian:
-                IntegralCodec<T, BigEndianCodec>.Write(destination, value);
-                break;
-
-            default:
-                throw new ArgumentOutOfRangeException(
-                    nameof(IntegralFormat.ByteOrder),
-                    Format.ByteOrder,
-                    "Undefined byte order.");
+            *(T*)destination = value;
+            return;
         }
+
+        // Opposite endian: size-switch Swap* from host value bits.
+        byte* hostPtr = (byte*)&value;
+        switch (size)
+        {
+            case 2:
+                IntegralWire.Swap2(destination, hostPtr);
+                return;
+            case 4:
+                IntegralWire.Swap4(destination, hostPtr);
+                return;
+            case 8:
+                IntegralWire.Swap8(destination, hostPtr);
+                return;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {size} is not supported.");
+        }
+    }
+
+    /// <summary>
+    /// True when wire byte order matches host (Native always matches).
+    /// </summary>
+    private bool IsHostWireCompatible()
+    {
+        ByteOrder order = Format.ByteOrder;
+        if (order == ByteOrder.Native)
+        {
+            return true;
+        }
+
+        return order == ByteOrder.LittleEndian
+            ? BitConverter.IsLittleEndian
+            : !BitConverter.IsLittleEndian;
     }
 
     private void ValidateTypeCompatibility<T>()

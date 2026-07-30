@@ -81,6 +81,17 @@ public readonly struct IntegralCapacity
         BlockCapacity = format.BlockCapacity;
     }
 
+    /// <summary>
+    /// Trusted construction for slices of an already-validated span.
+    /// Does not re-validate the format.
+    /// </summary>
+    internal IntegralCapacity(long byteCount, int valueByteCount, int blockCapacity)
+    {
+        ByteCount = byteCount;
+        ValueByteCount = valueByteCount;
+        BlockCapacity = blockCapacity;
+    }
+
     public bool IsValid()
     {
         if (ByteCount == 0 &&

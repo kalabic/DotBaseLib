@@ -1,5 +1,6 @@
 using DotBase.Buffers;
 using DotBase.Integral;
+using System;
 
 namespace DotBaseLib.Tests;
 
@@ -25,6 +26,52 @@ public unsafe class IntegralMemoryCopyTests
     }
 
     [Fact]
+    public void SameTypeOppositeEndianIdentityCopyReversesLanes()
+    {
+        // Exercises the memcpy + lane-reverse fast path (no numeric convert).
+        int[] hostValues = [0x01020304, unchecked((int)0xAABBCCDD), 0x11223344];
+        byte[] leStorage = new byte[hostValues.Length * sizeof(int)];
+        byte[] beStorage = new byte[hostValues.Length * sizeof(int)];
+
+        fixed (byte* lePtr = leStorage)
+        fixed (byte* bePtr = beStorage)
+        {
+            IntegralSpan le = IntegralTestData.CreateSpan(
+                lePtr,
+                hostValues.Length,
+                IntegralType.Int32,
+                ByteOrder.LittleEndian);
+            IntegralSpan be = IntegralTestData.CreateSpan(
+                bePtr,
+                hostValues.Length,
+                IntegralType.Int32,
+                ByteOrder.BigEndian);
+
+            for (int i = 0; i < hostValues.Length; ++i)
+            {
+                le.SetAtIndex(i, hostValues[i]);
+            }
+
+            IntegralMemory.Copy(le, be);
+
+            for (int i = 0; i < hostValues.Length; ++i)
+            {
+                Assert.Equal(hostValues[i], be.AtIndex<int>(i));
+            }
+
+            // Raw lane bytes must be opposite endian.
+            for (int i = 0; i < hostValues.Length; ++i)
+            {
+                int offset = i * sizeof(int);
+                Assert.Equal(leStorage[offset], beStorage[offset + 3]);
+                Assert.Equal(leStorage[offset + 1], beStorage[offset + 2]);
+                Assert.Equal(leStorage[offset + 2], beStorage[offset + 1]);
+                Assert.Equal(leStorage[offset + 3], beStorage[offset]);
+            }
+        }
+    }
+
+    [Fact]
     public void SameRepresentationIdentityCopyPreservesExactBytes()
     {
         foreach (IntegralType type in IntegralTestData.Types)
@@ -32,48 +79,43 @@ public unsafe class IntegralMemoryCopyTests
             int size = IntegralTestData.SizeOf(type);
             foreach (ByteOrder byteOrder in IntegralTestData.ByteOrders)
             {
-                foreach (int alignmentOffset in new[] { 0, 1 })
+                const int ValueCount = 3;
+                int byteCount = size * ValueCount;
+                byte* sourcePtr = IntegralTestData.AlignedAlloc(byteCount);
+                byte* destinationPtr = IntegralTestData.AlignedAlloc(byteCount);
+                try
                 {
-                    const int ValueCount = 3;
-                    byte[] sourceStorage = new byte[
-                        alignmentOffset + size * ValueCount];
-                    byte[] destinationStorage = new byte[
-                        alignmentOffset + size * ValueCount];
-
-                    for (int index = alignmentOffset;
-                         index < sourceStorage.Length;
-                         ++index)
+                    for (int index = 0; index < byteCount; ++index)
                     {
-                        sourceStorage[index] = unchecked(
+                        sourcePtr[index] = unchecked(
                             (byte)(index * 73 + (int)type * 19));
                     }
 
-                    fixed (byte* sourcePtr = sourceStorage)
-                    fixed (byte* destinationPtr = destinationStorage)
-                    {
-                        IntegralSpan source =
-                            IntegralTestData.CreateSpan(
-                                sourcePtr + alignmentOffset,
-                                ValueCount,
-                                type,
-                                byteOrder);
-                        IntegralSpan destination =
-                            IntegralTestData.CreateSpan(
-                                destinationPtr + alignmentOffset,
-                                ValueCount,
-                                type,
-                                byteOrder);
+                    IntegralSpan source =
+                        IntegralTestData.CreateSpan(
+                            sourcePtr,
+                            ValueCount,
+                            type,
+                            byteOrder);
+                    IntegralSpan destination =
+                        IntegralTestData.CreateSpan(
+                            destinationPtr,
+                            ValueCount,
+                            type,
+                            byteOrder);
 
-                        IntegralMemory.Copy(
-                            source,
-                            destination);
-                    }
+                    IntegralMemory.Copy(
+                        source,
+                        destination);
 
                     Assert.Equal(
-                        sourceStorage.AsSpan(
-                            alignmentOffset).ToArray(),
-                        destinationStorage.AsSpan(
-                            alignmentOffset).ToArray());
+                        new ReadOnlySpan<byte>(sourcePtr, byteCount).ToArray(),
+                        new ReadOnlySpan<byte>(destinationPtr, byteCount).ToArray());
+                }
+                finally
+                {
+                    IntegralTestData.AlignedFree(sourcePtr);
+                    IntegralTestData.AlignedFree(destinationPtr);
                 }
             }
         }
@@ -208,47 +250,45 @@ public unsafe class IntegralMemoryCopyTests
                     foreach (ByteOrder destinationByteOrder in
                              IntegralTestData.ByteOrders)
                     {
-                        foreach (int alignmentOffset in
-                                 new[] { 0, 1 })
+                        byte* sourcePtr =
+                            IntegralTestData.AlignedAlloc(sourceSize);
+                        byte* destinationPtr =
+                            IntegralTestData.AlignedAlloc(destinationSize);
+                        try
                         {
-                            byte[] sourceStorage = new byte[
-                                alignmentOffset + sourceSize];
-                            byte[] destinationStorage = new byte[
-                                alignmentOffset + destinationSize];
-
-                            fixed (byte* sourcePtr = sourceStorage)
-                            fixed (byte* destinationPtr =
-                                   destinationStorage)
-                            {
-                                IntegralSpan source =
-                                    IntegralTestData.CreateSpan(
-                                        sourcePtr + alignmentOffset,
-                                        1,
-                                        sourceType,
-                                        sourceByteOrder);
-                                IntegralSpan destination =
-                                    IntegralTestData.CreateSpan(
-                                        destinationPtr + alignmentOffset,
-                                        1,
-                                        destinationType,
-                                        destinationByteOrder);
-
-                                IntegralTestData.SetNumber(
-                                    source,
-                                    0,
-                                    1);
-                                IntegralMemory.Copy(
-                                    source,
-                                    destination,
+                            IntegralSpan source =
+                                IntegralTestData.CreateSpan(
+                                    sourcePtr,
                                     1,
-                                    conversion);
+                                    sourceType,
+                                    sourceByteOrder);
+                            IntegralSpan destination =
+                                IntegralTestData.CreateSpan(
+                                    destinationPtr,
+                                    1,
+                                    destinationType,
+                                    destinationByteOrder);
 
-                                Assert.Equal(
-                                    expectedValue,
-                                    IntegralTestData.GetNumber(
-                                        destination,
-                                        0));
-                            }
+                            IntegralTestData.SetNumber(
+                                source,
+                                0,
+                                1);
+                            IntegralMemory.Copy(
+                                source,
+                                destination,
+                                1,
+                                conversion);
+
+                            Assert.Equal(
+                                expectedValue,
+                                IntegralTestData.GetNumber(
+                                    destination,
+                                    0));
+                        }
+                        finally
+                        {
+                            IntegralTestData.AlignedFree(sourcePtr);
+                            IntegralTestData.AlignedFree(destinationPtr);
                         }
                     }
                 }

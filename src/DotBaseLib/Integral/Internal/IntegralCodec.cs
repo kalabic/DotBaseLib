@@ -1,4 +1,3 @@
-using DotBase.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -7,74 +6,74 @@ using System.Runtime.InteropServices;
 namespace DotBase.Integral.Internal;
 
 
-internal static class IntegralCodec<T, TEndian>
+/// <summary>
+/// LE-wire scalar codec. Aligned pointer path: same-endian is a single load/store;
+/// opposite endian size-switches into <see cref="IntegralWire"/> Swap*.
+/// <see cref="RequiresReversal"/> is also used by ring bulk paths.
+/// </summary>
+internal static class IntegralCodecLE<T>
     where T : unmanaged
-    where TEndian : struct, IEndianCodec
 {
-    internal static readonly int Size = Unsafe.SizeOf<T>();
-
-    private static readonly bool IsSupported =
-        typeof(T) == typeof(sbyte) ||
-        typeof(T) == typeof(byte) ||
-        typeof(T) == typeof(short) ||
-        typeof(T) == typeof(ushort) ||
-        typeof(T) == typeof(int) ||
-        typeof(T) == typeof(uint) ||
-        typeof(T) == typeof(long) ||
-        typeof(T) == typeof(ulong) ||
-        typeof(T) == typeof(nint) ||
-        typeof(T) == typeof(nuint) ||
-        typeof(T) == typeof(char) ||
-        typeof(T) == typeof(float) ||
-        typeof(T) == typeof(double);
-
     internal static bool RequiresReversal =>
-        !TEndian.ByteOrder.IsNativeCompatible() &&
-        Size > 1;
-
-    internal static void Validate()
-    {
-        if (!IsSupported)
-        {
-            throw new NotSupportedException(
-                $"Type '{typeof(T)}' is not a supported scalar type.");
-        }
-    }
+        IntegralWire.NeedsSwapForLeWire(Unsafe.SizeOf<T>());
 
     internal static unsafe T Read(byte* source)
     {
-        Validate();
-
-        T value = Unsafe.ReadUnaligned<T>(source);
         if (!RequiresReversal)
         {
-            return value;
+            return *(T*)source;
         }
 
-        return ReverseEndianness(value);
+        T host = default;
+        byte* hostPtr = (byte*)&host;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(hostPtr, source);
+                break;
+            case 4:
+                IntegralWire.Swap4(hostPtr, source);
+                break;
+            case 8:
+                IntegralWire.Swap8(hostPtr, source);
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
+
+        return host;
     }
 
     internal static unsafe void Write(byte* destination, T value)
     {
-        Validate();
-
-        if (RequiresReversal)
+        if (!RequiresReversal)
         {
-            value = ReverseEndianness(value);
+            *(T*)destination = value;
+            return;
         }
 
-        Unsafe.WriteUnaligned(destination, value);
+        byte* hostPtr = (byte*)&value;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(destination, hostPtr);
+                return;
+            case 4:
+                IntegralWire.Swap4(destination, hostPtr);
+                return;
+            case 8:
+                IntegralWire.Swap8(destination, hostPtr);
+                return;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
     }
 
     internal static unsafe T Read(ReadOnlySpan<byte> source)
     {
-        if (source.Length < Size)
-        {
-            throw new ArgumentException(
-                $"Source must contain at least {Size} bytes.",
-                nameof(source));
-        }
-
+        Debug.Assert(source.Length >= Unsafe.SizeOf<T>());
         fixed (byte* sourcePtr = source)
         {
             return Read(sourcePtr);
@@ -83,13 +82,7 @@ internal static class IntegralCodec<T, TEndian>
 
     internal static unsafe void Write(Span<byte> destination, T value)
     {
-        if (destination.Length < Size)
-        {
-            throw new ArgumentException(
-                $"Destination must contain at least {Size} bytes.",
-                nameof(destination));
-        }
-
+        Debug.Assert(destination.Length >= Unsafe.SizeOf<T>());
         fixed (byte* destinationPtr = destination)
         {
             Write(destinationPtr, value);
@@ -100,9 +93,109 @@ internal static class IntegralCodec<T, TEndian>
         ReadOnlySpan<T> source,
         Span<T> destination)
     {
-        Validate();
+        IntegralEndianness.ReverseSpan(source, destination);
+    }
+}
 
-        switch (Size)
+
+/// <summary>
+/// BE-wire scalar codec. Same aligned pointer discipline as LE.
+/// </summary>
+internal static class IntegralCodecBE<T>
+    where T : unmanaged
+{
+    internal static bool RequiresReversal =>
+        IntegralWire.NeedsSwapForBeWire(Unsafe.SizeOf<T>());
+
+    internal static unsafe T Read(byte* source)
+    {
+        if (!RequiresReversal)
+        {
+            return *(T*)source;
+        }
+
+        T host = default;
+        byte* hostPtr = (byte*)&host;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(hostPtr, source);
+                break;
+            case 4:
+                IntegralWire.Swap4(hostPtr, source);
+                break;
+            case 8:
+                IntegralWire.Swap8(hostPtr, source);
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
+
+        return host;
+    }
+
+    internal static unsafe void Write(byte* destination, T value)
+    {
+        if (!RequiresReversal)
+        {
+            *(T*)destination = value;
+            return;
+        }
+
+        byte* hostPtr = (byte*)&value;
+        switch (Unsafe.SizeOf<T>())
+        {
+            case 2:
+                IntegralWire.Swap2(destination, hostPtr);
+                return;
+            case 4:
+                IntegralWire.Swap4(destination, hostPtr);
+                return;
+            case 8:
+                IntegralWire.Swap8(destination, hostPtr);
+                return;
+            default:
+                throw new NotSupportedException(
+                    $"Scalar size {Unsafe.SizeOf<T>()} is not supported.");
+        }
+    }
+
+    internal static unsafe T Read(ReadOnlySpan<byte> source)
+    {
+        Debug.Assert(source.Length >= Unsafe.SizeOf<T>());
+        fixed (byte* sourcePtr = source)
+        {
+            return Read(sourcePtr);
+        }
+    }
+
+    internal static unsafe void Write(Span<byte> destination, T value)
+    {
+        Debug.Assert(destination.Length >= Unsafe.SizeOf<T>());
+        fixed (byte* destinationPtr = destination)
+        {
+            Write(destinationPtr, value);
+        }
+    }
+
+    internal static void ReverseEndianness(
+        ReadOnlySpan<T> source,
+        Span<T> destination)
+    {
+        IntegralEndianness.ReverseSpan(source, destination);
+    }
+}
+
+
+internal static class IntegralEndianness
+{
+    internal static void ReverseSpan<T>(
+        ReadOnlySpan<T> source,
+        Span<T> destination)
+        where T : unmanaged
+    {
+        switch (Unsafe.SizeOf<T>())
         {
             case 1:
                 source.CopyTo(destination);
@@ -131,9 +224,10 @@ internal static class IntegralCodec<T, TEndian>
         }
     }
 
-    private static T ReverseEndianness(T value)
+    internal static T ReverseValue<T>(T value)
+        where T : unmanaged
     {
-        return Size switch
+        return Unsafe.SizeOf<T>() switch
         {
             2 => Unsafe.BitCast<ushort, T>(
                 BinaryPrimitives.ReverseEndianness(
@@ -145,7 +239,7 @@ internal static class IntegralCodec<T, TEndian>
                 BinaryPrimitives.ReverseEndianness(
                     Unsafe.BitCast<T, ulong>(value))),
             _ => throw new InvalidOperationException(
-                $"Cannot reverse a scalar with size {Size}."),
+                $"Cannot reverse a scalar with size {Unsafe.SizeOf<T>()}."),
         };
     }
 }

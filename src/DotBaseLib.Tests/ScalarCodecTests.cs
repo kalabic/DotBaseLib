@@ -11,69 +11,57 @@ public unsafe class ScalarCodecTests
     {
         foreach (ByteOrder byteOrder in IntegralTestData.ByteOrders)
         {
-            foreach (int alignmentOffset in new[] { 0, 1 })
-            {
-                RunBoundsCase<byte>(
-                    IntegralType.UInt8,
-                    byte.MinValue,
-                    byte.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<sbyte>(
-                    IntegralType.Int8,
-                    sbyte.MinValue,
-                    sbyte.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<ushort>(
-                    IntegralType.UInt16,
-                    ushort.MinValue,
-                    ushort.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<short>(
-                    IntegralType.Int16,
-                    short.MinValue,
-                    short.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<uint>(
-                    IntegralType.UInt32,
-                    uint.MinValue,
-                    uint.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<int>(
-                    IntegralType.Int32,
-                    int.MinValue,
-                    int.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<ulong>(
-                    IntegralType.UInt64,
-                    ulong.MinValue,
-                    ulong.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<long>(
-                    IntegralType.Int64,
-                    long.MinValue,
-                    long.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<float>(
-                    IntegralType.Float,
-                    float.MinValue,
-                    float.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-                RunBoundsCase<double>(
-                    IntegralType.Double,
-                    double.MinValue,
-                    double.MaxValue,
-                    byteOrder,
-                    alignmentOffset);
-            }
+            // Value-aligned bases only (aligned wire contract).
+            RunBoundsCase<byte>(
+                IntegralType.UInt8,
+                byte.MinValue,
+                byte.MaxValue,
+                byteOrder);
+            RunBoundsCase<sbyte>(
+                IntegralType.Int8,
+                sbyte.MinValue,
+                sbyte.MaxValue,
+                byteOrder);
+            RunBoundsCase<ushort>(
+                IntegralType.UInt16,
+                ushort.MinValue,
+                ushort.MaxValue,
+                byteOrder);
+            RunBoundsCase<short>(
+                IntegralType.Int16,
+                short.MinValue,
+                short.MaxValue,
+                byteOrder);
+            RunBoundsCase<uint>(
+                IntegralType.UInt32,
+                uint.MinValue,
+                uint.MaxValue,
+                byteOrder);
+            RunBoundsCase<int>(
+                IntegralType.Int32,
+                int.MinValue,
+                int.MaxValue,
+                byteOrder);
+            RunBoundsCase<ulong>(
+                IntegralType.UInt64,
+                ulong.MinValue,
+                ulong.MaxValue,
+                byteOrder);
+            RunBoundsCase<long>(
+                IntegralType.Int64,
+                long.MinValue,
+                long.MaxValue,
+                byteOrder);
+            RunBoundsCase<float>(
+                IntegralType.Float,
+                float.MinValue,
+                float.MaxValue,
+                byteOrder);
+            RunBoundsCase<double>(
+                IntegralType.Double,
+                double.MinValue,
+                double.MaxValue,
+                byteOrder);
         }
     }
 
@@ -102,19 +90,14 @@ public unsafe class ScalarCodecTests
 
         foreach (ByteOrder byteOrder in IntegralTestData.ByteOrders)
         {
-            foreach (int alignmentOffset in new[] { 0, 1 })
-            {
-                RunSpecialCase(
-                    IntegralType.Float,
-                    singles,
-                    byteOrder,
-                    alignmentOffset);
-                RunSpecialCase(
-                    IntegralType.Double,
-                    doubles,
-                    byteOrder,
-                    alignmentOffset);
-            }
+            RunSpecialCase(
+                IntegralType.Float,
+                singles,
+                byteOrder);
+            RunSpecialCase(
+                IntegralType.Double,
+                doubles,
+                byteOrder);
         }
     }
 
@@ -151,17 +134,13 @@ public unsafe class ScalarCodecTests
         IntegralType type,
         T minimum,
         T maximum,
-        ByteOrder byteOrder,
-        int alignmentOffset)
+        ByteOrder byteOrder)
         where T : unmanaged
     {
         int size = sizeof(T);
-        byte[] storage = new byte[
-            checked(alignmentOffset + size * 2)];
-
-        fixed (byte* storagePtr = storage)
+        byte* data = IntegralTestData.AlignedAlloc(size * 2);
+        try
         {
-            byte* data = storagePtr + alignmentOffset;
             IntegralSpan span = IntegralTestData.CreateSpan(
                 data,
                 2,
@@ -191,22 +170,22 @@ public unsafe class ScalarCodecTests
                 maximum,
                 span.AtIndex<T>(1));
         }
+        finally
+        {
+            IntegralTestData.AlignedFree(data);
+        }
     }
 
     private static void RunSpecialCase<T>(
         IntegralType type,
         T[] values,
-        ByteOrder byteOrder,
-        int alignmentOffset)
+        ByteOrder byteOrder)
         where T : unmanaged
     {
         int size = sizeof(T);
-        byte[] storage = new byte[
-            checked(alignmentOffset + size * values.Length)];
-
-        fixed (byte* storagePtr = storage)
+        byte* data = IntegralTestData.AlignedAlloc(size * values.Length);
+        try
         {
-            byte* data = storagePtr + alignmentOffset;
             IntegralSpan span = IntegralTestData.CreateSpan(
                 data,
                 values.Length,
@@ -231,6 +210,10 @@ public unsafe class ScalarCodecTests
                         data + index * size,
                         size).ToArray());
             }
+        }
+        finally
+        {
+            IntegralTestData.AlignedFree(data);
         }
     }
 

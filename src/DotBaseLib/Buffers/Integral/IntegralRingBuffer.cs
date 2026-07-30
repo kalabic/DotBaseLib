@@ -1,5 +1,4 @@
 using DotBase.Buffers.Integral.Internal;
-using DotBase.Integral.Internal;
 using System.Diagnostics;
 
 namespace DotBase.Buffers.Integral;
@@ -21,8 +20,8 @@ public static class IntegralRingBuffer
     {
         return Resolve(byteOrder) switch
         {
-            ByteOrder.LittleEndian => new ByteRing<LittleEndianCodec>(capacity),
-            ByteOrder.BigEndian => new ByteRing<BigEndianCodec>(capacity),
+            ByteOrder.LittleEndian => new ByteRingLE(capacity),
+            ByteOrder.BigEndian => new ByteRingBE(capacity),
             _ => throw new UnreachableException(),
         };
     }
@@ -33,8 +32,8 @@ public static class IntegralRingBuffer
     {
         return Resolve(byteOrder) switch
         {
-            ByteOrder.LittleEndian => new LockedRingBuffer<LittleEndianCodec>(capacity),
-            ByteOrder.BigEndian => new LockedRingBuffer<BigEndianCodec>(capacity),
+            ByteOrder.LittleEndian => new LockedRingBufferLE(capacity),
+            ByteOrder.BigEndian => new LockedRingBufferBE(capacity),
             _ => throw new UnreachableException(),
         };
     }
@@ -45,8 +44,8 @@ public static class IntegralRingBuffer
     {
         return Resolve(byteOrder) switch
         {
-            ByteOrder.LittleEndian => new WaitableRingBuffer<LittleEndianCodec>(capacity),
-            ByteOrder.BigEndian => new WaitableRingBuffer<BigEndianCodec>(capacity),
+            ByteOrder.LittleEndian => new WaitableRingBufferLE(capacity),
+            ByteOrder.BigEndian => new WaitableRingBufferBE(capacity),
             _ => throw new UnreachableException(),
         };
     }

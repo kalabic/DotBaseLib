@@ -54,7 +54,8 @@ public unsafe class IntegralSpanTests
     [Fact]
     public void NegativeAndMisalignedRangesAreRejected()
     {
-        nint address = 1;
+        // Aligned fake base; exercise offset/length rules only.
+        nint address = 8;
 
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new IntegralSpan(
@@ -82,6 +83,19 @@ public unsafe class IntegralSpanTests
                 (byte*)address,
                 0,
                 sizeof(int) + 1,
+                IntegralType.Int32,
+                1));
+    }
+
+    [Fact]
+    public void UnalignedBaseAddressIsRejectedForMultiByteScalars()
+    {
+        nint unaligned = 1;
+        Assert.Throws<ArgumentException>(
+            () => new IntegralSpan(
+                (byte*)unaligned,
+                0,
+                sizeof(int),
                 IntegralType.Int32,
                 1));
     }
@@ -172,6 +186,62 @@ public unsafe class IntegralSpanTests
     }
 
     [Fact]
+    public void GetSubSpanPreservesScalarValuesWithoutRevalidatingFormat()
+    {
+        int[] values = [11, 22, 33, 44, 55, 66];
+        fixed (int* pointer = values)
+        {
+            IntegralSpan span = new(
+                (byte*)pointer,
+                0,
+                values.Length * sizeof(int),
+                IntegralType.Int32,
+                3);
+
+            IntegralSpan middle = span.GetValueSpan(2, 3);
+            Assert.Equal(3, middle.IntegralLength);
+            Assert.Equal(33, middle.AtIndex<int>(0));
+            Assert.Equal(44, middle.AtIndex<int>(1));
+            Assert.Equal(55, middle.AtIndex<int>(2));
+            Assert.Equal(IntegralType.Int32, middle.IntegralValueType);
+            Assert.Equal(3, middle.CountOf.BlockCapacity);
+        }
+    }
+
+    [Fact]
+    public void LittleAndBigEndianScalarRoundTripThroughSpan()
+    {
+        int host = unchecked((int)0xA1B2C3D4);
+        byte[] leBytes = new byte[sizeof(int)];
+        byte[] beBytes = new byte[sizeof(int)];
+
+        fixed (byte* lePtr = leBytes)
+        fixed (byte* bePtr = beBytes)
+        {
+            IntegralSpan le = IntegralTestData.CreateSpan(
+                lePtr,
+                1,
+                IntegralType.Int32,
+                ByteOrder.LittleEndian);
+            IntegralSpan be = IntegralTestData.CreateSpan(
+                bePtr,
+                1,
+                IntegralType.Int32,
+                ByteOrder.BigEndian);
+
+            le.SetAtIndex(0, host);
+            be.SetAtIndex(0, host);
+
+            Assert.Equal(host, le.AtIndex<int>(0));
+            Assert.Equal(host, be.AtIndex<int>(0));
+            Assert.Equal(leBytes[0], beBytes[3]);
+            Assert.Equal(leBytes[1], beBytes[2]);
+            Assert.Equal(leBytes[2], beBytes[1]);
+            Assert.Equal(leBytes[3], beBytes[0]);
+        }
+    }
+
+    [Fact]
     public void SliceBoundsAndAlignmentAreValidated()
     {
         nint address = 8;
@@ -208,7 +278,7 @@ public unsafe class IntegralSpanTests
                 IntegralType.UInt64,
                 1).ThrowIfArgumentOutOfRange());
 
-        nint address = 1;
+        nint address = 8;
         IntegralSpan highOffset = new(
             (byte*)address,
             long.MaxValue - 1,
