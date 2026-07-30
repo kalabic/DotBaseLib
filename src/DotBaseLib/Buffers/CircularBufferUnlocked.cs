@@ -176,18 +176,11 @@ namespace DotBase.Buffers
         /// <summary>
         /// Maximum length of this circular buffer
         /// </summary>
-        public int Capacity => buffer.Length;
+        public int ByteCapacity => buffer.Length;
 
-        /// <summary>
-        /// Number of bytes currently stored in the circular buffer
-        /// </summary>
-        public int Count
-        {
-            get
-            {
-                return byteCount;
-            }
-        }
+        public int FreeBytes { get { return buffer.Length - byteCount; } }
+
+        public int StoredBytes => byteCount;
 
         public virtual void Close()
         {
@@ -229,7 +222,7 @@ namespace DotBase.Buffers
                 {
                     byteCount -= count;
                     readPosition += count;
-                    readPosition %= Capacity;
+                    readPosition %= ByteCapacity;
                 }
             }
         }

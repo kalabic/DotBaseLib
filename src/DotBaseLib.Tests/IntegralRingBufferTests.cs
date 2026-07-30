@@ -87,7 +87,7 @@ public class IntegralRingBufferTests
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => ring.TryWrite(
                     oversized));
-            Assert.Equal(0, ring.Count);
+            Assert.Equal(0, ring.StoredBytes);
 
             IntegralSpan capacityMismatch =
                 IntegralTestData.CreateSpan(
@@ -100,7 +100,7 @@ public class IntegralRingBufferTests
                     IntegralSpan,
                     IntegralSpanLayout>(
                         ref capacityMismatch);
-            mismatchLayout.CountOf = new IntegralCapacity(
+            mismatchLayout.Capacity = new IntegralCapacity(
                 2 * sizeof(int),
                 IntegralType.Int32,
                 2);
@@ -108,7 +108,7 @@ public class IntegralRingBufferTests
             Assert.Throws<ArgumentException>(
                 () => ring.TryWrite(
                     capacityMismatch));
-            Assert.Equal(0, ring.Count);
+            Assert.Equal(0, ring.StoredBytes);
 
             IntegralSpan invalidFormat =
                 IntegralTestData.CreateSpan(
@@ -136,7 +136,7 @@ public class IntegralRingBufferTests
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => ring.TryWrite(
                     invalidFormat));
-            Assert.Equal(0, ring.Count);
+            Assert.Equal(0, ring.StoredBytes);
         }
     }
 
@@ -171,7 +171,7 @@ public class IntegralRingBufferTests
         Assert.Equal(
             expectedDestination,
             destinationBytes);
-        Assert.Equal(sizeof(int), ring.Count);
+        Assert.Equal(sizeof(int), ring.StoredBytes);
 
         int[] tooMany = [1, 2];
         fixed (int* sourcePtr = tooMany)
@@ -184,7 +184,7 @@ public class IntegralRingBufferTests
                 source));
         }
 
-        Assert.Equal(sizeof(int), ring.Count);
+        Assert.Equal(sizeof(int), ring.StoredBytes);
         Assert.True(ring.TryRead<int>(out int actual));
         Assert.Equal(existing, actual);
     }
@@ -243,7 +243,7 @@ public class IntegralRingBufferTests
                         1));
                 Assert.Equal(
                     incomplete.Length,
-                    ring.Count);
+                    ring.StoredBytes);
                 ring.ClearBuffer();
             }
         }
@@ -258,7 +258,7 @@ public class IntegralRingBufferTests
                     values,
                     0,
                     3));
-            Assert.Equal(0, ring.Count);
+            Assert.Equal(0, ring.StoredBytes);
 
             Assert.True(ring.TryWrite(values[0]));
             T[] unchanged =
@@ -274,14 +274,14 @@ public class IntegralRingBufferTests
             AssertValuesEqual<T>(
                 expectedUnchanged,
                 unchanged);
-            Assert.Equal(size, ring.Count);
+            Assert.Equal(size, ring.StoredBytes);
 
             Assert.False(
                 ring.TryWrite<T>(
                     values,
                     1,
                     2));
-            Assert.Equal(size, ring.Count);
+            Assert.Equal(size, ring.StoredBytes);
             Assert.True(ring.TryRead<T>(out T existing));
             AssertValueEqual(
                 values[0],
@@ -436,7 +436,7 @@ public class IntegralRingBufferTests
         internal IntegralPtr Ptr;
         internal long Offset;
         internal long Length;
-        internal IntegralCapacity CountOf;
+        internal IntegralCapacity Capacity;
     }
 
     [StructLayout(LayoutKind.Sequential)]

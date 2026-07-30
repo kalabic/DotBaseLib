@@ -7,8 +7,8 @@ namespace DotBase.Buffers.Integral.Internal;
 
 
 /// <summary>
-/// Bare native-backed byte ring FIFO. No argument validation — callers must pass legal
-/// pointers, non-negative sizes, and (for Read/Write) sizes within Count/FreeCount.
+/// Bare native-backed byte ring FIFO. No argument validation, callers must pass legal
+/// pointers, non-negative sizes, and (for read/write) sizes within stored and free bytes.
 /// </summary>
 /// <remarks>
 /// <c>ReadLE*</c> / <c>WriteLE*</c> reverse external buffer bytes relative to ring
@@ -18,35 +18,35 @@ namespace DotBase.Buffers.Integral.Internal;
 internal unsafe struct RingBufferStorage
 {
     private byte* _ptr;
-    private int _capacity;
+    private int _byteCapacity;
     private int _readPosition;
     private int _writePosition;
-    private int _byteCount;
+    private int _storedBytes;
     private bool _isOpen;
     private long _totalRead;
     private long _totalWritten;
 
-    internal RingBufferStorage(int capacity)
+    internal RingBufferStorage(int byteCapacity)
     {
-        Debug.Assert(capacity >= 0);
+        Debug.Assert(byteCapacity >= 0);
 
-        _capacity = capacity;
-        _isOpen = capacity > 0;
+        _byteCapacity = byteCapacity;
+        _isOpen = byteCapacity > 0;
         _ptr = _isOpen
-            ? (byte*)NativeMemory.Alloc((nuint)capacity)
+            ? (byte*)NativeMemory.Alloc((nuint)byteCapacity)
             : null;
         _readPosition = 0;
         _writePosition = 0;
-        _byteCount = 0;
+        _storedBytes = 0;
         _totalRead = 0;
         _totalWritten = 0;
     }
 
-    internal readonly int Capacity => _capacity;
+    internal readonly int ByteCapacity => _byteCapacity;
 
-    internal readonly int Count => _byteCount;
+    internal readonly int StoredBytes => _storedBytes;
 
-    internal readonly int FreeCount => _capacity - _byteCount;
+    internal readonly int FreeBytes => _byteCapacity - _storedBytes;
 
     internal readonly bool IsOpen => _isOpen;
 
@@ -61,7 +61,7 @@ internal unsafe struct RingBufferStorage
     internal int Read(byte* destination, int byteCount)
     {
         Debug.Assert(byteCount >= 0);
-        Debug.Assert(byteCount <= _byteCount);
+        Debug.Assert(byteCount <= _storedBytes);
         Debug.Assert(byteCount == 0 || destination is not null);
 
         if (byteCount == 0)
@@ -69,7 +69,7 @@ internal unsafe struct RingBufferStorage
             return 0;
         }
 
-        int firstCount = Math.Min(byteCount, _capacity - _readPosition);
+        int firstCount = Math.Min(byteCount, _byteCapacity - _readPosition);
         int secondCount = byteCount - firstCount;
 
         Buffer.MemoryCopy(
@@ -98,7 +98,7 @@ internal unsafe struct RingBufferStorage
     internal int Write(byte* source, int byteCount)
     {
         Debug.Assert(byteCount >= 0);
-        Debug.Assert(byteCount <= FreeCount);
+        Debug.Assert(byteCount <= FreeBytes);
         Debug.Assert(byteCount == 0 || source is not null);
 
         if (byteCount == 0)
@@ -106,7 +106,7 @@ internal unsafe struct RingBufferStorage
             return 0;
         }
 
-        int firstCount = Math.Min(byteCount, _capacity - _writePosition);
+        int firstCount = Math.Min(byteCount, _byteCapacity - _writePosition);
         int secondCount = byteCount - firstCount;
 
         Buffer.MemoryCopy(
@@ -130,10 +130,10 @@ internal unsafe struct RingBufferStorage
 
     internal int ReadBE2(byte* destination)
     {
-        Debug.Assert(_byteCount >= 2);
+        Debug.Assert(_storedBytes >= 2);
         Debug.Assert(destination is not null);
 
-        if (_readPosition + 2 <= _capacity)
+        if (_readPosition + 2 <= _byteCapacity)
         {
             Unsafe.WriteUnaligned(
                 destination,
@@ -151,10 +151,10 @@ internal unsafe struct RingBufferStorage
 
     internal int ReadBE4(byte* destination)
     {
-        Debug.Assert(_byteCount >= 4);
+        Debug.Assert(_storedBytes >= 4);
         Debug.Assert(destination is not null);
 
-        if (_readPosition + 4 <= _capacity)
+        if (_readPosition + 4 <= _byteCapacity)
         {
             Unsafe.WriteUnaligned(
                 destination,
@@ -163,7 +163,7 @@ internal unsafe struct RingBufferStorage
             return 4;
         }
 
-        int firstCount = _capacity - _readPosition;
+        int firstCount = _byteCapacity - _readPosition;
         int secondCount = 4 - firstCount;
 
         if (secondCount == 1)
@@ -195,10 +195,10 @@ internal unsafe struct RingBufferStorage
 
     internal int ReadBE8(byte* destination)
     {
-        Debug.Assert(_byteCount >= 8);
+        Debug.Assert(_storedBytes >= 8);
         Debug.Assert(destination is not null);
 
-        if (_readPosition + 8 <= _capacity)
+        if (_readPosition + 8 <= _byteCapacity)
         {
             Unsafe.WriteUnaligned(
                 destination,
@@ -207,7 +207,7 @@ internal unsafe struct RingBufferStorage
             return 8;
         }
 
-        int firstCount = _capacity - _readPosition;
+        int firstCount = _byteCapacity - _readPosition;
         int secondCount = 8 - firstCount;
 
         if (secondCount == 1)
@@ -295,10 +295,10 @@ internal unsafe struct RingBufferStorage
 
     internal int WriteBE2(byte* source)
     {
-        Debug.Assert(FreeCount >= 2);
+        Debug.Assert(FreeBytes >= 2);
         Debug.Assert(source is not null);
 
-        if (_writePosition + 2 <= _capacity)
+        if (_writePosition + 2 <= _byteCapacity)
         {
             Unsafe.WriteUnaligned(
                 _ptr + _writePosition,
@@ -315,10 +315,10 @@ internal unsafe struct RingBufferStorage
 
     internal int WriteBE4(byte* source)
     {
-        Debug.Assert(FreeCount >= 4);
+        Debug.Assert(FreeBytes >= 4);
         Debug.Assert(source is not null);
 
-        if (_writePosition + 4 <= _capacity)
+        if (_writePosition + 4 <= _byteCapacity)
         {
             Unsafe.WriteUnaligned(
                 _ptr + _writePosition,
@@ -327,7 +327,7 @@ internal unsafe struct RingBufferStorage
             return 4;
         }
 
-        int firstCount = _capacity - _writePosition;
+        int firstCount = _byteCapacity - _writePosition;
         int secondCount = 4 - firstCount;
 
         if (secondCount == 1)
@@ -358,10 +358,10 @@ internal unsafe struct RingBufferStorage
 
     internal int WriteBE8(byte* source)
     {
-        Debug.Assert(FreeCount >= 8);
+        Debug.Assert(FreeBytes >= 8);
         Debug.Assert(source is not null);
 
-        if (_writePosition + 8 <= _capacity)
+        if (_writePosition + 8 <= _byteCapacity)
         {
             Unsafe.WriteUnaligned(
                 _ptr + _writePosition,
@@ -370,7 +370,7 @@ internal unsafe struct RingBufferStorage
             return 8;
         }
 
-        int firstCount = _capacity - _writePosition;
+        int firstCount = _byteCapacity - _writePosition;
         int secondCount = 8 - firstCount;
 
         if (secondCount == 1)
@@ -457,10 +457,10 @@ internal unsafe struct RingBufferStorage
 
     internal int ReadLE2(byte* destination)
     {
-        Debug.Assert(_byteCount >= 2);
+        Debug.Assert(_storedBytes >= 2);
         Debug.Assert(destination is not null);
 
-        if (_readPosition + 2 <= _capacity)
+        if (_readPosition + 2 <= _byteCapacity)
         {
             ushort raw = Unsafe.ReadUnaligned<ushort>(_ptr + _readPosition);
             Unsafe.WriteUnaligned(
@@ -479,10 +479,10 @@ internal unsafe struct RingBufferStorage
 
     internal int ReadLE4(byte* destination)
     {
-        Debug.Assert(_byteCount >= 4);
+        Debug.Assert(_storedBytes >= 4);
         Debug.Assert(destination is not null);
 
-        if (_readPosition + 4 <= _capacity)
+        if (_readPosition + 4 <= _byteCapacity)
         {
             uint raw = Unsafe.ReadUnaligned<uint>(_ptr + _readPosition);
             Unsafe.WriteUnaligned(
@@ -492,7 +492,7 @@ internal unsafe struct RingBufferStorage
             return 4;
         }
 
-        int firstCount = _capacity - _readPosition;
+        int firstCount = _byteCapacity - _readPosition;
         int secondCount = 4 - firstCount;
 
         if (secondCount == 1)
@@ -523,10 +523,10 @@ internal unsafe struct RingBufferStorage
 
     internal int ReadLE8(byte* destination)
     {
-        Debug.Assert(_byteCount >= 8);
+        Debug.Assert(_storedBytes >= 8);
         Debug.Assert(destination is not null);
 
-        if (_readPosition + 8 <= _capacity)
+        if (_readPosition + 8 <= _byteCapacity)
         {
             ulong raw = Unsafe.ReadUnaligned<ulong>(_ptr + _readPosition);
             Unsafe.WriteUnaligned(
@@ -536,7 +536,7 @@ internal unsafe struct RingBufferStorage
             return 8;
         }
 
-        int firstCount = _capacity - _readPosition;
+        int firstCount = _byteCapacity - _readPosition;
         int secondCount = 8 - firstCount;
 
         if (secondCount == 1)
@@ -623,10 +623,10 @@ internal unsafe struct RingBufferStorage
 
     internal int WriteLE2(byte* source)
     {
-        Debug.Assert(FreeCount >= 2);
+        Debug.Assert(FreeBytes >= 2);
         Debug.Assert(source is not null);
 
-        if (_writePosition + 2 <= _capacity)
+        if (_writePosition + 2 <= _byteCapacity)
         {
             ushort raw = Unsafe.ReadUnaligned<ushort>(source);
             Unsafe.WriteUnaligned(
@@ -644,10 +644,10 @@ internal unsafe struct RingBufferStorage
 
     internal int WriteLE4(byte* source)
     {
-        Debug.Assert(FreeCount >= 4);
+        Debug.Assert(FreeBytes >= 4);
         Debug.Assert(source is not null);
 
-        if (_writePosition + 4 <= _capacity)
+        if (_writePosition + 4 <= _byteCapacity)
         {
             uint raw = Unsafe.ReadUnaligned<uint>(source);
             Unsafe.WriteUnaligned(
@@ -657,7 +657,7 @@ internal unsafe struct RingBufferStorage
             return 4;
         }
 
-        int firstCount = _capacity - _writePosition;
+        int firstCount = _byteCapacity - _writePosition;
         int secondCount = 4 - firstCount;
 
         if (secondCount == 1)
@@ -688,10 +688,10 @@ internal unsafe struct RingBufferStorage
 
     internal int WriteLE8(byte* source)
     {
-        Debug.Assert(FreeCount >= 8);
+        Debug.Assert(FreeBytes >= 8);
         Debug.Assert(source is not null);
 
-        if (_writePosition + 8 <= _capacity)
+        if (_writePosition + 8 <= _byteCapacity)
         {
             ulong raw = Unsafe.ReadUnaligned<ulong>(source);
             Unsafe.WriteUnaligned(
@@ -701,7 +701,7 @@ internal unsafe struct RingBufferStorage
             return 8;
         }
 
-        int firstCount = _capacity - _writePosition;
+        int firstCount = _byteCapacity - _writePosition;
         int secondCount = 8 - firstCount;
 
         if (secondCount == 1)
@@ -821,23 +821,23 @@ internal unsafe struct RingBufferStorage
             return;
         }
 
-        if (count >= _byteCount)
+        if (count >= _storedBytes)
         {
             Clear();
             return;
         }
 
-        _byteCount -= count;
+        _storedBytes -= count;
         _readPosition += count;
-        if (_readPosition >= _capacity)
+        if (_readPosition >= _byteCapacity)
         {
-            _readPosition -= _capacity;
+            _readPosition -= _byteCapacity;
         }
     }
 
     internal void Clear()
     {
-        _byteCount = 0;
+        _storedBytes = 0;
         _readPosition = 0;
         _writePosition = 0;
     }
@@ -852,19 +852,19 @@ internal unsafe struct RingBufferStorage
             _ptr = null;
         }
 
-        _capacity = 0;
+        _byteCapacity = 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AdvanceReadHead(int byteCount)
     {
         _readPosition += byteCount;
-        if (_readPosition >= _capacity)
+        if (_readPosition >= _byteCapacity)
         {
-            _readPosition -= _capacity;
+            _readPosition -= _byteCapacity;
         }
 
-        _byteCount -= byteCount;
+        _storedBytes -= byteCount;
         _totalRead += byteCount;
     }
 
@@ -872,12 +872,12 @@ internal unsafe struct RingBufferStorage
     private void AdvanceWriteHead(int byteCount)
     {
         _writePosition += byteCount;
-        if (_writePosition >= _capacity)
+        if (_writePosition >= _byteCapacity)
         {
-            _writePosition -= _capacity;
+            _writePosition -= _byteCapacity;
         }
 
-        _byteCount += byteCount;
+        _storedBytes += byteCount;
         _totalWritten += byteCount;
     }
 }

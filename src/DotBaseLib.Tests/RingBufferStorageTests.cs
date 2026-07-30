@@ -72,7 +72,7 @@ public unsafe class RingBufferStorageTests
                     Assert.Equal(pattern[i], dst[i]);
                 }
 
-                Assert.Equal(0, storage.Count);
+                Assert.Equal(0, storage.StoredBytes);
             }
             finally
             {
@@ -279,7 +279,7 @@ public unsafe class RingBufferStorageTests
         int[] source = [1, 2, 3, 4, 5];
         int written = ring.Write<int>(source);
         Assert.Equal(3, written);
-        Assert.Equal(12, ring.Count);
+        Assert.Equal(12, ring.StoredBytes);
 
         int[] dest = new int[5];
         int read = ring.Read<int>(dest.AsSpan());
@@ -287,6 +287,6 @@ public unsafe class RingBufferStorageTests
         Assert.Equal(1, dest[0]);
         Assert.Equal(2, dest[1]);
         Assert.Equal(3, dest[2]);
-        Assert.Equal(0, ring.Count);
+        Assert.Equal(0, ring.StoredBytes);
     }
 }

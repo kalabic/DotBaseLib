@@ -3,7 +3,6 @@ using DotBase.Integral;
 using DotBase.Integral.Internal;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace DotBase.Buffers.Integral.Internal;
 
@@ -21,9 +20,11 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
 
     public ByteOrder ByteOrder => ByteOrder.LittleEndian;
 
-    public int Capacity => _storage.Capacity;
+    public int ByteCapacity => _storage.ByteCapacity;
 
-    public int Count => _storage.Count;
+    public int FreeBytes => _storage.FreeBytes;
+
+    public int StoredBytes => _storage.StoredBytes;
 
     public bool IsOpen => _storage.IsOpen;
 
@@ -41,16 +42,22 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
         base.Dispose(disposing);
     }
 
-    public int CapacityOf<T>()
+    public int CapacityAs<T>()
         where T : unmanaged
     {
-        return _storage.Capacity / Unsafe.SizeOf<T>();
+        return _storage.ByteCapacity / Unsafe.SizeOf<T>();
     }
 
-    public int CountOf<T>()
+    public int FreeCount<T>()
         where T : unmanaged
     {
-        return _storage.Count / Unsafe.SizeOf<T>();
+        return _storage.FreeBytes / Unsafe.SizeOf<T>();
+    }
+
+    public int StoredCount<T>()
+        where T : unmanaged
+    {
+        return _storage.StoredBytes / Unsafe.SizeOf<T>();
     }
 
     public void AdvanceBy<T>(int count)
@@ -84,14 +91,14 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
     {
         ArgumentNullException.ThrowIfNull(data);
         Span<byte> destination = data.AsSpan(offset, count);
-        int n = Math.Min(destination.Length, _storage.Count);
+        int n = Math.Min(destination.Length, _storage.StoredBytes);
         return n == 0 ? 0 : _storage.Read(destination[..n]);
     }
 
     public unsafe int Read(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        int n = Math.Min(count, _storage.Count);
+        int n = Math.Min(count, _storage.StoredBytes);
         return n == 0 ? 0 : _storage.Read(data + offset, n);
     }
 
@@ -99,14 +106,14 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
     {
         ArgumentNullException.ThrowIfNull(data);
         ReadOnlySpan<byte> source = data.AsSpan(offset, count);
-        int n = Math.Min(source.Length, _storage.FreeCount);
+        int n = Math.Min(source.Length, _storage.FreeBytes);
         return n == 0 ? 0 : _storage.Write(source[..n]);
     }
 
     public unsafe int Write(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        int n = Math.Min(count, _storage.FreeCount);
+        int n = Math.Min(count, _storage.FreeBytes);
         return n == 0 ? 0 : _storage.Write(data + offset, n);
     }
 
@@ -126,7 +133,7 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.Count < n)
+        if (!_storage.IsOpen || _storage.StoredBytes < n)
         {
             value = default;
             return false;
@@ -196,7 +203,7 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.FreeCount < n)
+        if (!_storage.IsOpen || _storage.FreeBytes < n)
         {
             return false;
         }
@@ -396,7 +403,7 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.Count / n);
+        int elementCount = Math.Min(count, _storage.StoredBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -417,7 +424,7 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.Count < requiredBytes)
+        if (!_storage.IsOpen || _storage.StoredBytes < requiredBytes)
         {
             return false;
         }
@@ -436,7 +443,7 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.FreeCount / n);
+        int elementCount = Math.Min(count, _storage.FreeBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -457,7 +464,7 @@ internal sealed class ByteRingLE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.FreeCount < requiredBytes)
+        if (!_storage.IsOpen || _storage.FreeBytes < requiredBytes)
         {
             return false;
         }
@@ -505,9 +512,11 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
 
     public ByteOrder ByteOrder => ByteOrder.BigEndian;
 
-    public int Capacity => _storage.Capacity;
+    public int ByteCapacity => _storage.ByteCapacity;
 
-    public int Count => _storage.Count;
+    public int FreeBytes => _storage.FreeBytes;
+
+    public int StoredBytes => _storage.StoredBytes;
 
     public bool IsOpen => _storage.IsOpen;
 
@@ -525,16 +534,22 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
         base.Dispose(disposing);
     }
 
-    public int CapacityOf<T>()
+    public int CapacityAs<T>()
         where T : unmanaged
     {
-        return _storage.Capacity / Unsafe.SizeOf<T>();
+        return _storage.ByteCapacity / Unsafe.SizeOf<T>();
     }
 
-    public int CountOf<T>()
+    public int FreeCount<T>()
         where T : unmanaged
     {
-        return _storage.Count / Unsafe.SizeOf<T>();
+        return _storage.FreeBytes / Unsafe.SizeOf<T>();
+    }
+
+    public int StoredCount<T>()
+        where T : unmanaged
+    {
+        return _storage.StoredBytes / Unsafe.SizeOf<T>();
     }
 
     public void AdvanceBy<T>(int count)
@@ -568,14 +583,14 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
     {
         ArgumentNullException.ThrowIfNull(data);
         Span<byte> destination = data.AsSpan(offset, count);
-        int n = Math.Min(destination.Length, _storage.Count);
+        int n = Math.Min(destination.Length, _storage.StoredBytes);
         return n == 0 ? 0 : _storage.Read(destination[..n]);
     }
 
     public unsafe int Read(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        int n = Math.Min(count, _storage.Count);
+        int n = Math.Min(count, _storage.StoredBytes);
         return n == 0 ? 0 : _storage.Read(data + offset, n);
     }
 
@@ -583,14 +598,14 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
     {
         ArgumentNullException.ThrowIfNull(data);
         ReadOnlySpan<byte> source = data.AsSpan(offset, count);
-        int n = Math.Min(source.Length, _storage.FreeCount);
+        int n = Math.Min(source.Length, _storage.FreeBytes);
         return n == 0 ? 0 : _storage.Write(source[..n]);
     }
 
     public unsafe int Write(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        int n = Math.Min(count, _storage.FreeCount);
+        int n = Math.Min(count, _storage.FreeBytes);
         return n == 0 ? 0 : _storage.Write(data + offset, n);
     }
 
@@ -610,7 +625,7 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.Count < n)
+        if (!_storage.IsOpen || _storage.StoredBytes < n)
         {
             value = default;
             return false;
@@ -680,7 +695,7 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.FreeCount < n)
+        if (!_storage.IsOpen || _storage.FreeBytes < n)
         {
             return false;
         }
@@ -880,7 +895,7 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.Count / n);
+        int elementCount = Math.Min(count, _storage.StoredBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -901,7 +916,7 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.Count < requiredBytes)
+        if (!_storage.IsOpen || _storage.StoredBytes < requiredBytes)
         {
             return false;
         }
@@ -920,7 +935,7 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.FreeCount / n);
+        int elementCount = Math.Min(count, _storage.FreeBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -941,7 +956,7 @@ internal sealed class ByteRingBE : DisposableBase, IIntegralRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.FreeCount < requiredBytes)
+        if (!_storage.IsOpen || _storage.FreeBytes < requiredBytes)
         {
             return false;
         }

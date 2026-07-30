@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using DotBase.Integral;
 using DotBase.Integral.Internal;
 
@@ -27,10 +26,10 @@ internal static class IntegralRingOperationsLE
             return 0;
         }
 
-        int valueByteCount = destination.CountOf.ValueByteCount;
+        int valueByteCount = destination.Capacity.ValueByteCount;
         int valueCount = Math.Min(
             requestedByteCount / valueByteCount,
-            storage.Count / valueByteCount);
+            storage.StoredBytes / valueByteCount);
 
         return ReadValues(
             ref storage,
@@ -48,14 +47,14 @@ internal static class IntegralRingOperationsLE
             nameof(destination));
 
         if (!storage.IsOpen ||
-            storage.Count < requiredByteCount)
+            storage.StoredBytes < requiredByteCount)
         {
             return false;
         }
 
         int valueCount = requiredByteCount == 0
             ? 0
-            : requiredByteCount / destination.CountOf.ValueByteCount;
+            : requiredByteCount / destination.Capacity.ValueByteCount;
         int readCount = ReadValues(
             ref storage,
             destination,
@@ -78,10 +77,10 @@ internal static class IntegralRingOperationsLE
             return 0;
         }
 
-        int valueByteCount = source.CountOf.ValueByteCount;
+        int valueByteCount = source.Capacity.ValueByteCount;
         int valueCount = Math.Min(
             requestedByteCount / valueByteCount,
-            storage.FreeCount / valueByteCount);
+            storage.FreeBytes / valueByteCount);
 
         return WriteValues(
             ref storage,
@@ -99,14 +98,14 @@ internal static class IntegralRingOperationsLE
             nameof(source));
 
         if (!storage.IsOpen ||
-            storage.FreeCount < requiredByteCount)
+            storage.FreeBytes < requiredByteCount)
         {
             return false;
         }
 
         int valueCount = requiredByteCount == 0
             ? 0
-            : requiredByteCount / source.CountOf.ValueByteCount;
+            : requiredByteCount / source.Capacity.ValueByteCount;
         int writtenCount = WriteValues(
             ref storage,
             source,
@@ -120,9 +119,9 @@ internal static class IntegralRingOperationsLE
         in IntegralSpan span,
         string parameterName)
     {
-        if (!span.CountOf.IsValid() ||
-            span.CountOf.ByteCount != span.Length ||
-            span.CountOf.BlockCapacity != span.Format.BlockCapacity)
+        if (!span.Capacity.IsValid() ||
+            span.Capacity.ByteCount != span.Length ||
+            span.Capacity.BlockCapacity != span.Format.BlockCapacity)
         {
             throw new ArgumentException(
                 "The integral span has inconsistent capacity metadata.",
@@ -138,7 +137,7 @@ internal static class IntegralRingOperationsLE
         }
 
         int valueByteCount = span.IntegralValueType.Size();
-        if (span.CountOf.ValueByteCount != valueByteCount ||
+        if (span.Capacity.ValueByteCount != valueByteCount ||
             span.Format.BlockCapacity <= 0 ||
             span.Length % valueByteCount != 0 ||
             span.Offset % valueByteCount != 0 ||
@@ -150,7 +149,7 @@ internal static class IntegralRingOperationsLE
         }
 
         if (span.Length > int.MaxValue ||
-            (storage.IsOpen && span.Length > storage.Capacity))
+            (storage.IsOpen && span.Length > storage.ByteCapacity))
         {
             throw new ArgumentOutOfRangeException(
                 parameterName,
@@ -172,7 +171,7 @@ internal static class IntegralRingOperationsLE
         }
 
         int byteCount = checked(
-            valueCount * destination.CountOf.ValueByteCount);
+            valueCount * destination.Capacity.ValueByteCount);
         int bytesRead = storage.Read(
             destination.DataPtr,
             byteCount);
@@ -217,7 +216,7 @@ internal static class IntegralRingOperationsLE
         }
 
         int byteCount = checked(
-            valueCount * source.CountOf.ValueByteCount);
+            valueCount * source.Capacity.ValueByteCount);
 
         if (ResolveByteOrder(source.Format.ByteOrder) == ByteOrder.LittleEndian)
         {
@@ -233,7 +232,7 @@ internal static class IntegralRingOperationsLE
             ref storage,
             source.DataPtr,
             valueCount,
-            source.CountOf.ValueByteCount);
+            source.Capacity.ValueByteCount);
     }
 
     /// <summary>
@@ -334,10 +333,10 @@ internal static class IntegralRingOperationsBE
             return 0;
         }
 
-        int valueByteCount = destination.CountOf.ValueByteCount;
+        int valueByteCount = destination.Capacity.ValueByteCount;
         int valueCount = Math.Min(
             requestedByteCount / valueByteCount,
-            storage.Count / valueByteCount);
+            storage.StoredBytes / valueByteCount);
 
         return ReadValues(
             ref storage,
@@ -355,14 +354,14 @@ internal static class IntegralRingOperationsBE
             nameof(destination));
 
         if (!storage.IsOpen ||
-            storage.Count < requiredByteCount)
+            storage.StoredBytes < requiredByteCount)
         {
             return false;
         }
 
         int valueCount = requiredByteCount == 0
             ? 0
-            : requiredByteCount / destination.CountOf.ValueByteCount;
+            : requiredByteCount / destination.Capacity.ValueByteCount;
         int readCount = ReadValues(
             ref storage,
             destination,
@@ -385,10 +384,10 @@ internal static class IntegralRingOperationsBE
             return 0;
         }
 
-        int valueByteCount = source.CountOf.ValueByteCount;
+        int valueByteCount = source.Capacity.ValueByteCount;
         int valueCount = Math.Min(
             requestedByteCount / valueByteCount,
-            storage.FreeCount / valueByteCount);
+            storage.FreeBytes / valueByteCount);
 
         return WriteValues(
             ref storage,
@@ -406,14 +405,14 @@ internal static class IntegralRingOperationsBE
             nameof(source));
 
         if (!storage.IsOpen ||
-            storage.FreeCount < requiredByteCount)
+            storage.FreeBytes < requiredByteCount)
         {
             return false;
         }
 
         int valueCount = requiredByteCount == 0
             ? 0
-            : requiredByteCount / source.CountOf.ValueByteCount;
+            : requiredByteCount / source.Capacity.ValueByteCount;
         int writtenCount = WriteValues(
             ref storage,
             source,
@@ -427,9 +426,9 @@ internal static class IntegralRingOperationsBE
         in IntegralSpan span,
         string parameterName)
     {
-        if (!span.CountOf.IsValid() ||
-            span.CountOf.ByteCount != span.Length ||
-            span.CountOf.BlockCapacity != span.Format.BlockCapacity)
+        if (!span.Capacity.IsValid() ||
+            span.Capacity.ByteCount != span.Length ||
+            span.Capacity.BlockCapacity != span.Format.BlockCapacity)
         {
             throw new ArgumentException(
                 "The integral span has inconsistent capacity metadata.",
@@ -445,7 +444,7 @@ internal static class IntegralRingOperationsBE
         }
 
         int valueByteCount = span.IntegralValueType.Size();
-        if (span.CountOf.ValueByteCount != valueByteCount ||
+        if (span.Capacity.ValueByteCount != valueByteCount ||
             span.Format.BlockCapacity <= 0 ||
             span.Length % valueByteCount != 0 ||
             span.Offset % valueByteCount != 0 ||
@@ -457,7 +456,7 @@ internal static class IntegralRingOperationsBE
         }
 
         if (span.Length > int.MaxValue ||
-            (storage.IsOpen && span.Length > storage.Capacity))
+            (storage.IsOpen && span.Length > storage.ByteCapacity))
         {
             throw new ArgumentOutOfRangeException(
                 parameterName,
@@ -479,7 +478,7 @@ internal static class IntegralRingOperationsBE
         }
 
         int byteCount = checked(
-            valueCount * destination.CountOf.ValueByteCount);
+            valueCount * destination.Capacity.ValueByteCount);
         int bytesRead = storage.Read(
             destination.DataPtr,
             byteCount);
@@ -524,7 +523,7 @@ internal static class IntegralRingOperationsBE
         }
 
         int byteCount = checked(
-            valueCount * source.CountOf.ValueByteCount);
+            valueCount * source.Capacity.ValueByteCount);
 
         if (ResolveByteOrder(source.Format.ByteOrder) == ByteOrder.BigEndian)
         {
@@ -540,7 +539,7 @@ internal static class IntegralRingOperationsBE
             ref storage,
             source.DataPtr,
             valueCount,
-            source.CountOf.ValueByteCount);
+            source.Capacity.ValueByteCount);
     }
 
     /// <summary>

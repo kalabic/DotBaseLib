@@ -3,9 +3,11 @@
 
 public interface IByteRingBuffer
 {
-    int Capacity { get; }
+    int ByteCapacity { get; }
 
-    int Count { get; }
+    int FreeBytes { get; }
+
+    int StoredBytes { get; }
 
     bool IsOpen { get; }
 

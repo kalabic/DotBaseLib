@@ -47,10 +47,10 @@ public static unsafe class IntegralMemory
 
         nuint sourceByteCount = GetByteCount(
             valueCount,
-            source.CountOf.ValueByteCount);
+            source.Capacity.ValueByteCount);
         nuint destinationByteCount = GetByteCount(
             valueCount,
-            destination.CountOf.ValueByteCount);
+            destination.Capacity.ValueByteCount);
 
         if (RangesOverlap(
             source.DataPtr,
@@ -74,7 +74,7 @@ public static unsafe class IntegralMemory
 
         if (conversion.IsIdentity &&
             source.IntegralValueType == destination.IntegralValueType &&
-            source.CountOf.ValueByteCount == destination.CountOf.ValueByteCount)
+            source.Capacity.ValueByteCount == destination.Capacity.ValueByteCount)
         {
             ByteOrder srcOrder = ResolveByteOrder(source.Format.ByteOrder);
             ByteOrder dstOrder = ResolveByteOrder(destination.Format.ByteOrder);
@@ -85,18 +85,18 @@ public static unsafe class IntegralMemory
                     source.DataPtr,
                     destination.DataPtr,
                     valueCount,
-                    source.CountOf.ValueByteCount);
+                    source.Capacity.ValueByteCount);
                 return;
             }
         }
 
         Dispatch(
             source.DataPtr,
-            source.CountOf.ValueByteCount,
+            source.Capacity.ValueByteCount,
             source.IntegralValueType,
             ResolveByteOrder(source.Format.ByteOrder),
             destination.DataPtr,
-            destination.CountOf.ValueByteCount,
+            destination.Capacity.ValueByteCount,
             destination.IntegralValueType,
             ResolveByteOrder(destination.Format.ByteOrder),
             valueCount,
@@ -140,10 +140,10 @@ public static unsafe class IntegralMemory
 
         nuint sourceByteCount = GetByteCount(
             valueCount,
-            source.CountOf.ValueByteCount);
+            source.Capacity.ValueByteCount);
         nuint destinationByteCount = GetByteCount(
             valueCount,
-            destination.CountOf.ValueByteCount);
+            destination.Capacity.ValueByteCount);
 
         bool overlaps = RangesOverlap(
             source.DataPtr,
@@ -177,11 +177,11 @@ public static unsafe class IntegralMemory
         {
             Dispatch(
                 source.DataPtr,
-                source.CountOf.ValueByteCount,
+                source.Capacity.ValueByteCount,
                 source.IntegralValueType,
                 ResolveByteOrder(source.Format.ByteOrder),
                 destination.DataPtr,
-                destination.CountOf.ValueByteCount,
+                destination.Capacity.ValueByteCount,
                 destination.IntegralValueType,
                 ResolveByteOrder(destination.Format.ByteOrder),
                 valueCount,
@@ -211,11 +211,11 @@ public static unsafe class IntegralMemory
 
             Dispatch(
                 preserved,
-                source.CountOf.ValueByteCount,
+                source.Capacity.ValueByteCount,
                 source.IntegralValueType,
                 ResolveByteOrder(source.Format.ByteOrder),
                 destination.DataPtr,
-                destination.CountOf.ValueByteCount,
+                destination.Capacity.ValueByteCount,
                 destination.IntegralValueType,
                 ResolveByteOrder(destination.Format.ByteOrder),
                 valueCount,
@@ -281,14 +281,14 @@ public static unsafe class IntegralMemory
         }
 
         long sourceByteOffset = checked(
-            sourceValueOffset * source.CountOf.ValueByteCount);
+            sourceValueOffset * source.Capacity.ValueByteCount);
         long sourceByteStride = valueCount > 1
-            ? checked(sourceValueStride * source.CountOf.ValueByteCount)
+            ? checked(sourceValueStride * source.Capacity.ValueByteCount)
             : 0;
         long destinationByteOffset = checked(
-            destinationValueOffset * destination.CountOf.ValueByteCount);
+            destinationValueOffset * destination.Capacity.ValueByteCount);
         long destinationByteStride = valueCount > 1
-            ? checked(destinationValueStride * destination.CountOf.ValueByteCount)
+            ? checked(destinationValueStride * destination.Capacity.ValueByteCount)
             : 0;
 
         byte* sourcePtr = source.DataPtr + sourceByteOffset;
@@ -297,10 +297,10 @@ public static unsafe class IntegralMemory
         if (StridedRangesOverlap(
             sourcePtr,
             sourceByteStride,
-            source.CountOf.ValueByteCount,
+            source.Capacity.ValueByteCount,
             destinationPtr,
             destinationByteStride,
-            destination.CountOf.ValueByteCount,
+            destination.Capacity.ValueByteCount,
             valueCount))
         {
             throw new ArgumentException(

@@ -116,8 +116,8 @@ public unsafe class IntegralSpanTests
             Assert.Equal(11, span.IntegralLength);
             Assert.Equal(2, span.BlockLength);
             Assert.Equal(3, span.TrailingValueCount);
-            Assert.Equal(4, span.CountOf.BlockCapacity);
-            Assert.Equal(16, span.CountOf.BlockByteCount);
+            Assert.Equal(4, span.Capacity.BlockCapacity);
+            Assert.Equal(16, span.Capacity.BlockByteCount);
         }
     }
 
@@ -204,7 +204,7 @@ public unsafe class IntegralSpanTests
             Assert.Equal(44, middle.AtIndex<int>(1));
             Assert.Equal(55, middle.AtIndex<int>(2));
             Assert.Equal(IntegralType.Int32, middle.IntegralValueType);
-            Assert.Equal(3, middle.CountOf.BlockCapacity);
+            Assert.Equal(3, middle.Capacity.BlockCapacity);
         }
     }
 
@@ -309,6 +309,6 @@ public unsafe class IntegralSpanTests
         Assert.Equal(IntegralType.NONE, span.IntegralValueType);
         Assert.Equal(0, (nint)span.BytePtr);
         Assert.Equal(0, (nint)span.DataPtr);
-        Assert.True(span.CountOf.IsValid());
+        Assert.True(span.Capacity.IsValid());
     }
 }

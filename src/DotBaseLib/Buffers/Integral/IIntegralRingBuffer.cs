@@ -13,10 +13,13 @@ public interface IIntegralRingBuffer :
 {
     ByteOrder ByteOrder { get; }
 
-    int CapacityOf<T>()
+    int CapacityAs<T>()
         where T : unmanaged;
 
-    int CountOf<T>()
+    int FreeCount<T>()
+        where T : unmanaged;
+
+    int StoredCount<T>()
         where T : unmanaged;
 
     void AdvanceBy<T>(int count)

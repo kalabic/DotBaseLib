@@ -40,7 +40,7 @@ public readonly unsafe struct IntegralSpan
     public readonly long Length;
 
     /// <summary> Count of bytes, integral values, and blocks in the region. </summary>
-    public readonly IntegralCapacity CountOf;
+    public readonly IntegralCapacity Capacity;
 
     /// <summary> Gets the original, unadjusted base pointer. </summary>
     public byte* BytePtr { get { return Ptr.BytePtr; } }
@@ -52,21 +52,11 @@ public readonly unsafe struct IntegralSpan
 
     public IntegralType IntegralValueType { get { return Ptr.Fmt.ValueType; } }
 
-    public long IntegralOffset
-    {
-        get
-        {
-            return CountOf.ValueByteCount == 0
-                ? 0
-                : Offset / CountOf.ValueByteCount;
-        }
-    }
+    public long IntegralLength { get { return Capacity.TotalValueCount; } }
 
-    public long IntegralLength { get { return CountOf.TotalValueCount; } }
+    public long BlockLength { get { return Capacity.BlockCount; } }
 
-    public long BlockLength { get { return CountOf.BlockCount; } }
-
-    public int TrailingValueCount { get { return CountOf.TrailingValueCount; } }
+    public int TrailingValueCount { get { return Capacity.TrailingValueCount; } }
 
 
     public IntegralSpan()
@@ -74,7 +64,7 @@ public readonly unsafe struct IntegralSpan
         Ptr = IntegralPtr.NULL;
         Length = 0;
         Offset = 0;
-        CountOf = IntegralCapacity.Zero;
+        Capacity = IntegralCapacity.Zero;
     }
 
     public IntegralSpan(byte* ptr, long offset, long length, IntegralType valueType, int blockValueCount)
@@ -99,14 +89,14 @@ public readonly unsafe struct IntegralSpan
                 nameof(ptr));
         }
 
-        IntegralCapacity countOf = new(
+        IntegralCapacity capacity = new(
             length,
             ptr.Fmt.ValueType,
             ptr.Fmt.BlockCapacity);
-        countOf.ThrowIfArgumentOutOfRange();
+        capacity.ThrowIfArgumentOutOfRange();
 
-        if (countOf.ValueByteCount > 0 &&
-            (offset % countOf.ValueByteCount) != 0)
+        if (capacity.ValueByteCount > 0 &&
+            (offset % capacity.ValueByteCount) != 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(offset),
@@ -116,9 +106,9 @@ public readonly unsafe struct IntegralSpan
 
         // Value addresses must be natural-aligned for wire load/store.
         if (!ptr.IsNull &&
-            countOf.ValueByteCount > 1 &&
+            capacity.ValueByteCount > 1 &&
             (((nuint)ptr.BytePtr + (nuint)offset) %
-             (nuint)countOf.ValueByteCount) != 0)
+             (nuint)capacity.ValueByteCount) != 0)
         {
             throw new ArgumentException(
                 "The integral span base address plus offset must be " +
@@ -126,7 +116,7 @@ public readonly unsafe struct IntegralSpan
                 nameof(ptr));
         }
 
-        this = new IntegralSpan(ptr, offset, length, countOf);
+        this = new IntegralSpan(ptr, offset, length, capacity);
     }
 
     /// <summary>
@@ -137,12 +127,12 @@ public readonly unsafe struct IntegralSpan
         in IntegralPtr ptr,
         long offset,
         long length,
-        IntegralCapacity countOf)
+        IntegralCapacity capacity)
     {
         Ptr = ptr;
         Offset = offset;
         Length = length;
-        CountOf = countOf;
+        Capacity = capacity;
     }
 
     /// <summary> Parameter <paramref name="index"/> is the linear index of an integral value. </summary>
@@ -173,10 +163,7 @@ public readonly unsafe struct IntegralSpan
     }
 
     /// <summary> Writes a value at the supplied block and within-block indices. </summary>
-    public void SetAtBlockIndex<T>(
-        long blockIndex,
-        int blockValueIndex,
-        T value)
+    public void SetAtBlockIndex<T>(long blockIndex, int blockValueIndex, T value)
         where T : unmanaged
     {
         ValidateTypeCompatibility<T>();
@@ -192,13 +179,11 @@ public readonly unsafe struct IntegralSpan
             index,
             IntegralLength);
 
-        return DataPtr + index * CountOf.ValueByteCount;
+        return DataPtr + index * Capacity.ValueByteCount;
     }
 
     /// <summary> Gets the byte address of a value at the supplied block and within-block indices. </summary>
-    public byte* GetBlockValueBytePtr(
-        long blockIndex,
-        int blockValueIndex)
+    public byte* GetBlockValueBytePtr(long blockIndex, int blockValueIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(blockIndex);
         ArgumentOutOfRangeException.ThrowIfNegative(blockValueIndex);
@@ -207,12 +192,12 @@ public readonly unsafe struct IntegralSpan
             BlockLength);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
             blockValueIndex,
-            CountOf.BlockCapacity);
+            Capacity.BlockCapacity);
 
         long valueIndex =
-            blockIndex * CountOf.BlockCapacity +
+            blockIndex * Capacity.BlockCapacity +
             blockValueIndex;
-        return DataPtr + valueIndex * CountOf.ValueByteCount;
+        return DataPtr + valueIndex * Capacity.ValueByteCount;
     }
 
     /// <summary>
@@ -249,8 +234,8 @@ public readonly unsafe struct IntegralSpan
             nameof(blockCount));
 
         return GetSubSpan(
-            checked(blockOffset * CountOf.BlockByteCount),
-            checked(blockCount * CountOf.BlockByteCount));
+            checked(blockOffset * Capacity.BlockByteCount),
+            checked(blockCount * Capacity.BlockByteCount));
     }
 
     public IntegralSpan GetValueSpan(long valueOffset, long valueCount)
@@ -263,8 +248,8 @@ public readonly unsafe struct IntegralSpan
             nameof(valueCount));
 
         return GetSubSpan(
-            checked(valueOffset * CountOf.ValueByteCount),
-            checked(valueCount * CountOf.ValueByteCount));
+            checked(valueOffset * Capacity.ValueByteCount),
+            checked(valueCount * Capacity.ValueByteCount));
     }
 
     public IntegralSpan GetSubSpan(long byteOffset, long byteLength)
@@ -276,16 +261,16 @@ public readonly unsafe struct IntegralSpan
             nameof(byteOffset),
             nameof(byteLength));
 
-        if (CountOf.ValueByteCount > 0 &&
-            (byteOffset % CountOf.ValueByteCount) != 0)
+        if (Capacity.ValueByteCount > 0 &&
+            (byteOffset % Capacity.ValueByteCount) != 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(byteOffset),
                 "The subspan must begin on a scalar value boundary.");
         }
 
-        if (CountOf.ValueByteCount > 0 &&
-            (byteLength % CountOf.ValueByteCount) != 0)
+        if (Capacity.ValueByteCount > 0 &&
+            (byteLength % Capacity.ValueByteCount) != 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(byteLength),
@@ -294,11 +279,11 @@ public readonly unsafe struct IntegralSpan
 
         // Parent already validated format; build capacity without re-running Format.Validate.
         long newOffset = checked(Offset + byteOffset);
-        IntegralCapacity countOf = new(
+        IntegralCapacity capacity = new(
             byteLength,
-            CountOf.ValueByteCount,
-            CountOf.BlockCapacity);
-        return new IntegralSpan(Ptr, newOffset, byteLength, countOf);
+            Capacity.ValueByteCount,
+            Capacity.BlockCapacity);
+        return new IntegralSpan(Ptr, newOffset, byteLength, capacity);
     }
 
     private T ReadScalar<T>(byte* source)

@@ -3,7 +3,6 @@ using DotBase.Integral;
 using DotBase.Integral.Internal;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace DotBase.Buffers.Integral.Internal;
 
@@ -22,14 +21,19 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
 
     public ByteOrder ByteOrder => ByteOrder.LittleEndian;
 
-    public int Capacity
+    public int ByteCapacity
     {
-        get { lock (_lock) { return _storage.Capacity; } }
+        get { lock (_lock) { return _storage.ByteCapacity; } }
     }
 
-    public int Count
+    public int FreeBytes
     {
-        get { lock (_lock) { return _storage.Count; } }
+        get { lock (_lock) { return _storage.FreeBytes; } }
+    }
+
+    public int StoredBytes
+    {
+        get { lock (_lock) { return _storage.StoredBytes; } }
     }
 
     public bool IsOpen
@@ -57,21 +61,30 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
         base.Dispose(disposing);
     }
 
-    public int CapacityOf<T>()
+    public int CapacityAs<T>()
         where T : unmanaged
     {
         lock (_lock)
         {
-            return _storage.Capacity / Unsafe.SizeOf<T>();
+            return _storage.ByteCapacity / Unsafe.SizeOf<T>();
         }
     }
 
-    public int CountOf<T>()
+    public int FreeCount<T>()
         where T : unmanaged
     {
         lock (_lock)
         {
-            return _storage.Count / Unsafe.SizeOf<T>();
+            return _storage.FreeBytes / Unsafe.SizeOf<T>();
+        }
+    }
+
+    public int StoredCount<T>()
+        where T : unmanaged
+    {
+        lock (_lock)
+        {
+            return _storage.StoredBytes / Unsafe.SizeOf<T>();
         }
     }
 
@@ -415,7 +428,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
                 return 0;
             }
 
-            int n = Math.Min(destination.Length, _storage.Count);
+            int n = Math.Min(destination.Length, _storage.StoredBytes);
             return n == 0 ? 0 : _storage.Read(destination[..n]);
         }
     }
@@ -424,7 +437,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
     {
         lock (_lock)
         {
-            int n = Math.Min(source.Length, _storage.FreeCount);
+            int n = Math.Min(source.Length, _storage.FreeBytes);
             if (n == 0)
             {
                 return 0;
@@ -450,7 +463,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
                 return 0;
             }
 
-            int n = Math.Min(byteCount, _storage.Count);
+            int n = Math.Min(byteCount, _storage.StoredBytes);
             return n == 0 ? 0 : _storage.Read(destination, n);
         }
     }
@@ -459,7 +472,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
     {
         lock (_lock)
         {
-            int n = Math.Min(byteCount, _storage.FreeCount);
+            int n = Math.Min(byteCount, _storage.FreeBytes);
             if (n == 0)
             {
                 return 0;
@@ -505,10 +518,10 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             requiredBytes,
-            _storage.Capacity,
+            _storage.ByteCapacity,
             parameterName);
 
-        while (_storage.IsOpen && _storage.Count < requiredBytes)
+        while (_storage.IsOpen && _storage.StoredBytes < requiredBytes)
         {
             Monitor.Wait(_lock);
         }
@@ -518,7 +531,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.Count < n)
+        if (!_storage.IsOpen || _storage.StoredBytes < n)
         {
             value = default;
             return false;
@@ -578,7 +591,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.FreeCount < n)
+        if (!_storage.IsOpen || _storage.FreeBytes < n)
         {
             return false;
         }
@@ -640,7 +653,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.Count / n);
+        int elementCount = Math.Min(count, _storage.StoredBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -661,7 +674,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.Count < requiredBytes)
+        if (!_storage.IsOpen || _storage.StoredBytes < requiredBytes)
         {
             return false;
         }
@@ -680,7 +693,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.FreeCount / n);
+        int elementCount = Math.Min(count, _storage.FreeBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -701,7 +714,7 @@ internal sealed class WaitableRingBufferLE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.FreeCount < requiredBytes)
+        if (!_storage.IsOpen || _storage.FreeBytes < requiredBytes)
         {
             return false;
         }
@@ -750,14 +763,19 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
 
     public ByteOrder ByteOrder => ByteOrder.BigEndian;
 
-    public int Capacity
+    public int ByteCapacity
     {
-        get { lock (_lock) { return _storage.Capacity; } }
+        get { lock (_lock) { return _storage.ByteCapacity; } }
     }
 
-    public int Count
+    public int FreeBytes
     {
-        get { lock (_lock) { return _storage.Count; } }
+        get { lock (_lock) { return _storage.FreeBytes; } }
+    }
+
+    public int StoredBytes
+    {
+        get { lock (_lock) { return _storage.StoredBytes; } }
     }
 
     public bool IsOpen
@@ -785,21 +803,30 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
         base.Dispose(disposing);
     }
 
-    public int CapacityOf<T>()
+    public int CapacityAs<T>()
         where T : unmanaged
     {
         lock (_lock)
         {
-            return _storage.Capacity / Unsafe.SizeOf<T>();
+            return _storage.ByteCapacity / Unsafe.SizeOf<T>();
         }
     }
 
-    public int CountOf<T>()
+    public int FreeCount<T>()
         where T : unmanaged
     {
         lock (_lock)
         {
-            return _storage.Count / Unsafe.SizeOf<T>();
+            return _storage.FreeBytes / Unsafe.SizeOf<T>();
+        }
+    }
+
+    public int StoredCount<T>()
+        where T : unmanaged
+    {
+        lock (_lock)
+        {
+            return _storage.StoredBytes / Unsafe.SizeOf<T>();
         }
     }
 
@@ -1143,7 +1170,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
                 return 0;
             }
 
-            int n = Math.Min(destination.Length, _storage.Count);
+            int n = Math.Min(destination.Length, _storage.StoredBytes);
             return n == 0 ? 0 : _storage.Read(destination[..n]);
         }
     }
@@ -1152,7 +1179,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
     {
         lock (_lock)
         {
-            int n = Math.Min(source.Length, _storage.FreeCount);
+            int n = Math.Min(source.Length, _storage.FreeBytes);
             if (n == 0)
             {
                 return 0;
@@ -1178,7 +1205,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
                 return 0;
             }
 
-            int n = Math.Min(byteCount, _storage.Count);
+            int n = Math.Min(byteCount, _storage.StoredBytes);
             return n == 0 ? 0 : _storage.Read(destination, n);
         }
     }
@@ -1187,7 +1214,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
     {
         lock (_lock)
         {
-            int n = Math.Min(byteCount, _storage.FreeCount);
+            int n = Math.Min(byteCount, _storage.FreeBytes);
             if (n == 0)
             {
                 return 0;
@@ -1233,10 +1260,10 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             requiredBytes,
-            _storage.Capacity,
+            _storage.ByteCapacity,
             parameterName);
 
-        while (_storage.IsOpen && _storage.Count < requiredBytes)
+        while (_storage.IsOpen && _storage.StoredBytes < requiredBytes)
         {
             Monitor.Wait(_lock);
         }
@@ -1246,7 +1273,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.Count < n)
+        if (!_storage.IsOpen || _storage.StoredBytes < n)
         {
             value = default;
             return false;
@@ -1306,7 +1333,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int n = Unsafe.SizeOf<T>();
-        if (!_storage.IsOpen || _storage.FreeCount < n)
+        if (!_storage.IsOpen || _storage.FreeBytes < n)
         {
             return false;
         }
@@ -1368,7 +1395,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.Count / n);
+        int elementCount = Math.Min(count, _storage.StoredBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -1389,7 +1416,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.Count < requiredBytes)
+        if (!_storage.IsOpen || _storage.StoredBytes < requiredBytes)
         {
             return false;
         }
@@ -1408,7 +1435,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
         }
 
         int n = Unsafe.SizeOf<T>();
-        int elementCount = Math.Min(count, _storage.FreeCount / n);
+        int elementCount = Math.Min(count, _storage.FreeBytes / n);
         if (elementCount == 0)
         {
             return 0;
@@ -1429,7 +1456,7 @@ internal sealed class WaitableRingBufferBE : DisposableBase, IWaitableRingBuffer
         where T : unmanaged
     {
         int requiredBytes = checked(count * Unsafe.SizeOf<T>());
-        if (!_storage.IsOpen || _storage.FreeCount < requiredBytes)
+        if (!_storage.IsOpen || _storage.FreeBytes < requiredBytes)
         {
             return false;
         }

@@ -63,7 +63,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
         lock (_lock)
         {
             bytesWritten = base.Write(data, offset, length);
-            if (!IsOpen || ((_waitingStoredByteCount > 0) && (Count >= _waitingStoredByteCount)))
+            if (!IsOpen || ((_waitingStoredByteCount > 0) && (StoredBytes >= _waitingStoredByteCount)))
             {
                 _storedByteCountEvent.Set();
             }
@@ -75,7 +75,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
     {
         lock (_lock)
         {
-            if (!IsOpen || (Count >= length))
+            if (!IsOpen || (StoredBytes >= length))
             {
                 _storedByteCountEvent.Set();
                 _waitingStoredByteCount = 0;
@@ -111,13 +111,13 @@ public class CircularBufferWaitable : CircularBufferUnlocked
     public override int Read(byte[] data, int offset, int length)
     {
         // Cannot force read if requested length is larger than allocated buffer size.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, Capacity, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
 
         while (true)
         {
             lock (_lock)
             {
-                if (Count >= length)
+                if (StoredBytes >= length)
                 {
                     unsafe { fixed (byte* dataPtr = data) {
                             return base.Read(dataPtr, offset, length);
@@ -137,13 +137,13 @@ public class CircularBufferWaitable : CircularBufferUnlocked
     public override unsafe int Read(byte* data, int offset, int length)
     {
         // Cannot force read if requested length is larger than allocated buffer size.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, Capacity, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
 
         while (true)
         {
             lock (_lock)
             {
-                if (Count >= length)
+                if (StoredBytes >= length)
                 {
                     return base.Read(data, offset, length);
                 }
