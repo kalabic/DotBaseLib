@@ -1,4 +1,4 @@
-﻿using DotBase.Core;
+using DotBase.Core;
 using DotBase.Event;
 using DotBase.Log;
 
@@ -6,149 +6,126 @@ namespace DotBase.Cancellation;
 
 
 /// <summary>
-/// 
-/// Triggers cancellation only once until object state is reset again using <see cref="Reset(bool)"/>.
-/// 
+/// Triggers cancellation only once until object state is reset using <see cref="Reset(bool)"/>.
 /// </summary>
-public class ConsoleCancellationSource 
+public class ConsoleCancellationSource
     : DisposableBase
 {
-    // Public properties >>
+    public bool IsCancellationRequested => _cancellation.IsCancellationRequested;
 
-    public bool IsCancellationRequested { get { return _cts.IsCancellationRequested; } }
+    public CancellationToken Token => _cancellation.Token;
 
-    public CancellationToken Token { get { return _cts.Token; } }
+    public IEventProducer<CancellationEvent> CancellationEvent => _cancelledEvent;
 
-    public IEventProducer<CancellationEvent> CancellationEvent { get { return _cancelledEvent; } }
+    private readonly ConsoleCancelEventHandler _cancelKeyPressHandler;
 
-    // Private data >>
+    private readonly CancellationEventProducer _cancelledEvent = new();
 
-
-    /// <summary>
-    /// 
-    /// For now this lock only applies to:
-    /// <list type="bullet">
-    /// <item> <see cref="Dispose(bool)"/> </item>
-    /// <item> <see cref="Reset(bool)"/> </item>
-    /// <item> <see cref="HandleCancelKeyPress(object?, ConsoleCancelEventArgs)"/> </item>
-    /// </list>
-    /// 
-    /// </summary>
-    private readonly object _disposeLock = new object();
-
-    private CancellationEventProducer _cancelledEvent;
-
-    private CancellationTokenSource _cts;
-
-    private volatile int _isCancelled = 0;
-
-    // Implementation >>
+    private readonly ResettableCancellationTokenSource _cancellation = new();
 
     public ConsoleCancellationSource()
     {
-        _cancelledEvent = new CancellationEventProducer();
-        _cts = new CancellationTokenSource();
-        Console.CancelKeyPress += HandleCancelKeyPress;
+        _cancelKeyPressHandler = CreateWeakCancelKeyPressHandler(this);
+        Console.CancelKeyPress += _cancelKeyPressHandler;
+    }
+
+    ~ConsoleCancellationSource()
+    {
+        Console.CancelKeyPress -= _cancelKeyPressHandler;
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            lock(_disposeLock)
-            {
-                Unregister();
-                _cts.Dispose();
-                _cancelledEvent.Dispose();
-                base.Dispose(disposing);
-                return;
-            }
+            Unregister();
+            _cancellation.DisposeAfter(_cancelledEvent);
+            _cancellation.Dispose();
         }
+
         base.Dispose(disposing);
     }
 
     public void Reset(bool continueExec = false)
     {
-        lock(_disposeLock)
-        {
-            if (!IsDisposed)
-            {
-                _isCancelled = 0;
-                _cts.Dispose();
-                _cts = new CancellationTokenSource();
-            }
-        }
+        _cancellation.TryReset();
     }
 
     public void Unregister()
     {
-        Console.CancelKeyPress -= HandleCancelKeyPress;
-    }
-
-    private void HandleCancelKeyPress(object? s, ConsoleCancelEventArgs ev)
-    {
-        LiteLog.Log.Info("Cancellation event by a key press (Ctrl-C)");
-        lock (_disposeLock)
-        {
-            if (TryBeginCancel())
-            {
-                _cts.CancelAsync();
-                _cancelledEvent.Invoke();
-            }
-
-            // Setting this to FALSE creates a DEADLOCK when Visual Studio 2022 debugger is attached??
-            // (If true it means current process should continue when signal handler returns)
-            ev.Cancel = true;
-        }
+        Console.CancelKeyPress -= _cancelKeyPressHandler;
     }
 
     public void Cancel()
     {
-        if (TryBeginCancel())
-        {
-            _cts.Cancel();
-            _cancelledEvent.Invoke();
-        }
+        Cancel(false);
     }
 
-    public void Cancel(bool throwOnFirstException) 
+    public void Cancel(bool throwOnFirstException)
     {
-        if (TryBeginCancel())
+        using ResettableCancellationTokenSource.CancellationOperation? operation =
+            _cancellation.TryBeginCancellation();
+
+        if (operation is not null)
         {
-            _cts.Cancel(throwOnFirstException);
+            operation.Source.Cancel(throwOnFirstException);
             _cancelledEvent.Invoke();
         }
     }
 
     public Task CancelAsync()
     {
-        if (TryBeginCancel())
-        {
-            var task = _cts.CancelAsync();
-            _cancelledEvent.Invoke();
-            return task;
-        }
-        else
-        {
-            return Task.CompletedTask;
-        }
+        ResettableCancellationTokenSource.CancellationOperation? operation =
+            _cancellation.TryBeginCancellation();
+
+        return operation is null
+            ? Task.CompletedTask
+            : CancelAsync(operation);
     }
 
     public bool WaitOne(int miliseconds = -1)
     {
-        return _cts.Token.WaitHandle.WaitOne(miliseconds);
+        try
+        {
+            return Token.WaitHandle.WaitOne(miliseconds);
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
     }
 
-
-    /// <summary>
-    /// <list type="bullet">
-    /// <item> Returns true only once until object state is reset again using <see cref="Reset(bool)"/>. </item>
-    /// <item> Once disposed, it returns false always. </item>
-    /// </list>
-    /// </summary>
-    /// <returns></returns>
-    private bool TryBeginCancel()
+    private async Task CancelAsync(ResettableCancellationTokenSource.CancellationOperation operation)
     {
-        return !IsDisposed && Interlocked.CompareExchange(ref _isCancelled, 1, 0) == 0;
+        using (operation)
+        {
+            Task? cancellation = null;
+            try
+            {
+                cancellation = operation.Source.CancelAsync();
+                _cancelledEvent.Invoke();
+            }
+            finally
+            {
+                if (cancellation is not null)
+                {
+                    await cancellation.ConfigureAwait(false);
+                }
+            }
+        }
+    }
+
+    private static ConsoleCancelEventHandler CreateWeakCancelKeyPressHandler(ConsoleCancellationSource source)
+    {
+        var weakSource = new WeakReference<ConsoleCancellationSource>(source);
+        return (_, ev) =>
+        {
+            if (weakSource.TryGetTarget(out ConsoleCancellationSource? target))
+            {
+                LiteLog.Log.Info("Cancellation event by a key press (Ctrl-C)");
+                ev.Cancel = true;
+                _ = target.CancelAsync();
+            }
+        };
     }
 }

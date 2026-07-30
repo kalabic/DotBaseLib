@@ -3,6 +3,11 @@
 namespace DotBase.Buffers;
 
 
+/// <summary>
+///
+/// Concurrent producers are supported but overlapping Read calls from multiple consumers are not.
+///
+/// </summary>
 public class CircularBufferWaitable : CircularBufferUnlocked
 {
     private readonly object _lock = new object();
@@ -42,7 +47,17 @@ public class CircularBufferWaitable : CircularBufferUnlocked
     // Group: Write
     //
 
+
     public override int Write(byte[] data, int offset, int length)
+    {
+        // An array Write wrapper that acquires _lock before calling base.Write(byte[], ...); let the pointer override perform signalling.
+        lock (_lock)
+        {
+            return base.Write(data, offset, length);
+        }
+    }
+
+    public override unsafe int Write(byte* data, int offset, int length)
     {
         int bytesWritten;
         lock (_lock)
@@ -100,7 +115,33 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
         while (true)
         {
-            lock(_lock)
+            lock (_lock)
+            {
+                if (Count >= length)
+                {
+                    unsafe { fixed (byte* dataPtr = data) {
+                            return base.Read(dataPtr, offset, length);
+                    } }
+                }
+            }
+
+            if (!WaitForStoredData(length))
+            {
+                break;
+            }
+        }
+
+        return 0;
+    }
+
+    public override unsafe int Read(byte* data, int offset, int length)
+    {
+        // Cannot force read if requested length is larger than allocated buffer size.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, Capacity, nameof(length));
+
+        while (true)
+        {
+            lock (_lock)
             {
                 if (Count >= length)
                 {

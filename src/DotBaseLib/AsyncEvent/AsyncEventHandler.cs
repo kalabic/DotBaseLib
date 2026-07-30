@@ -107,7 +107,17 @@ namespace DotBase.AsyncEvent
             }
 
             var delegates = eventHandler.GetInvocationList().Cast<AsyncEventHandler>();
-            var tasks = delegates.Select(it => it.Invoke(sender, eventArgs));
+            var tasks = delegates.Select <AsyncEventHandler, Task > (it =>
+            {
+                try
+                {
+                    return it.Invoke(sender, eventArgs);
+                }
+                catch (Exception ex)
+                {
+                    return Task.FromException(ex);
+                }
+            });
 
             return Task.WhenAll(tasks);
         }
@@ -134,7 +144,17 @@ namespace DotBase.AsyncEvent
             }
 
             var delegates = eventHandler.GetInvocationList().Cast<AsyncEventHandler<TEventArgs>>();
-            var tasks = delegates.Select(it => it.Invoke(sender, eventArgs));
+            var tasks = delegates.Select <AsyncEventHandler<TEventArgs>, Task> (it =>
+            {
+                try
+                {
+                    return it.Invoke(sender, eventArgs);
+                }
+                catch (Exception ex)
+                {
+                    return Task.FromException(ex);
+                }
+            });
 
             return Task.WhenAll(tasks);
         }

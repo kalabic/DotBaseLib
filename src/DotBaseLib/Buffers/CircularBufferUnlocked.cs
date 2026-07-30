@@ -90,6 +90,8 @@ namespace DotBase.Buffers
         }
         public virtual unsafe int Write(byte* dataPtr, int offset, int count)
         {
+            ArgumentOutOfRangeException.ThrowIfNegative(count);
+
             if (isOpen)
             {
                 var bytesWritten = 0;
@@ -135,6 +137,8 @@ namespace DotBase.Buffers
         }
         public virtual unsafe int Read(byte* dataPtr, int offset, int count)
         {
+            ArgumentOutOfRangeException.ThrowIfNegative(count);
+
             if (isOpen)
             {
                 if (count > byteCount)
@@ -213,6 +217,8 @@ namespace DotBase.Buffers
         /// <param name="count">Bytes to advance</param>
         public virtual void Advance(int count)
         {
+            ArgumentOutOfRangeException.ThrowIfNegative(count);
+
             if (isOpen)
             {
                 if (count >= byteCount)

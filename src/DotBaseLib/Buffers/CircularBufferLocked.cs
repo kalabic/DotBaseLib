@@ -22,11 +22,27 @@ public class CircularBufferLocked : CircularBufferUnlocked
         }
     }
 
+    public override unsafe int Write(byte* data, int offset, int length)
+    {
+        lock (_lock)
+        {
+            return base.Write(data, offset, length);
+        }
+    }
+
     //
     // Group: Read, Advance, ClearBuffer
     //
 
     public override int Read(byte[] data, int offset, int length)
+    {
+        lock (_lock)
+        {
+            return base.Read(data, offset, length);
+        }
+    }
+
+    public override unsafe int Read(byte* data, int offset, int length)
     {
         lock (_lock)
         {
@@ -47,6 +63,14 @@ public class CircularBufferLocked : CircularBufferUnlocked
         lock (_lock)
         {
             base.ClearBuffer();
+        }
+    }
+
+    public override void Close()
+    {
+        lock (_lock)
+        {
+            base.Close();
         }
     }
 }

@@ -62,36 +62,32 @@ public class CancellableEventSlim : IDisposable
         _registration = cancellation.Register(() => { Cancel(EVENT_TOKEN_CANCELLED); });
     }
 
-    ~CancellableEventSlim()
-    {
-#if DEBUG_UNDISPOSED
-        Debug.Assert(IsDisposed);
-#endif
-        Dispose(false);
-    }
-
     public void Dispose()
     {
         Dispose(true);
+        GC.SuppressFinalize(this);
     }
 
     protected virtual void Dispose(bool disposing)
     {
-        if (disposing)
+        if (!disposing)
         {
-            lock (_lock)
-            {
-                if (IsDisposed)
-                {
-                    return;
-                }
-
-                Cancel(EVENT_DISPOSED);
-                _isDisposed = 1;
-                _event.Dispose();
-                _registration.Dispose();
-            }
+            return;
         }
+
+        lock (_lock)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            Cancel(EVENT_DISPOSED);
+            _isDisposed = 1;
+        }
+
+        _registration.Dispose();
+        _event.Dispose();
     }
 
     public void Cancel(bool disposing)
