@@ -1,3 +1,5 @@
+using DotBase.Integral;
+
 namespace DotBase.Buffers.Integral;
 
 
@@ -19,4 +21,12 @@ public interface IIntegralRingBuffer :
 
     void AdvanceBy<T>(int count)
         where T : unmanaged;
+
+    int Read(in IntegralSpan destination);
+
+    bool TryRead(in IntegralSpan destination);
+
+    int Write(in IntegralSpan source);
+
+    bool TryWrite(in IntegralSpan source);
 }

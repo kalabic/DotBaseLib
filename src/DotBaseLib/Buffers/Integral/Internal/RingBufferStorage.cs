@@ -1,3 +1,5 @@
+using DotBase.Integral.Internal;
+
 namespace DotBase.Buffers.Integral.Internal;
 
 
@@ -31,22 +33,42 @@ internal struct RingBufferStorage
 
     internal readonly long TotalWritten => _totalWritten;
 
-    internal int Read(Span<byte> destination)
+    internal unsafe int Read(
+        byte* destination,
+        int byteCount)
     {
-        if (!_isOpen || destination.IsEmpty)
+        ArgumentOutOfRangeException.ThrowIfNegative(byteCount);
+
+        if (!_isOpen || byteCount == 0)
         {
             return 0;
         }
 
-        int byteCount = Math.Min(destination.Length, _byteCount);
-        int firstCount = Math.Min(byteCount, _buffer.Length - _readPosition);
-
-        _buffer.AsSpan(_readPosition, firstCount).CopyTo(destination);
-
-        int secondCount = byteCount - firstCount;
-        if (secondCount > 0)
+        if (destination is null)
         {
-            _buffer.AsSpan(0, secondCount).CopyTo(destination[firstCount..]);
+            throw new ArgumentNullException(nameof(destination));
+        }
+
+        byteCount = Math.Min(byteCount, _byteCount);
+        if (byteCount == 0)
+        {
+            return 0;
+        }
+
+        int firstCount = Math.Min(byteCount, _buffer.Length - _readPosition);
+        int secondCount = byteCount - firstCount;
+
+        fixed (byte* bufferPtr = _buffer)
+        {
+            IntegralByteMemory.Copy(
+                bufferPtr + _readPosition,
+                destination,
+                (nuint)firstCount);
+
+            IntegralByteMemory.Copy(
+                bufferPtr,
+                destination + firstCount,
+                (nuint)secondCount);
         }
 
         _readPosition = (_readPosition + byteCount) % _buffer.Length;
@@ -55,28 +77,64 @@ internal struct RingBufferStorage
         return byteCount;
     }
 
-    internal int Write(ReadOnlySpan<byte> source)
+    internal unsafe int Write(
+        byte* source,
+        int byteCount)
     {
-        if (!_isOpen || source.IsEmpty)
+        ArgumentOutOfRangeException.ThrowIfNegative(byteCount);
+
+        if (!_isOpen || byteCount == 0)
         {
             return 0;
         }
 
-        int byteCount = Math.Min(source.Length, FreeCount);
-        int firstCount = Math.Min(byteCount, _buffer.Length - _writePosition);
-
-        source[..firstCount].CopyTo(_buffer.AsSpan(_writePosition));
-
-        int secondCount = byteCount - firstCount;
-        if (secondCount > 0)
+        if (source is null)
         {
-            source.Slice(firstCount, secondCount).CopyTo(_buffer);
+            throw new ArgumentNullException(nameof(source));
+        }
+
+        byteCount = Math.Min(byteCount, FreeCount);
+        if (byteCount == 0)
+        {
+            return 0;
+        }
+
+        int firstCount = Math.Min(byteCount, _buffer.Length - _writePosition);
+        int secondCount = byteCount - firstCount;
+
+        fixed (byte* bufferPtr = _buffer)
+        {
+            IntegralByteMemory.Copy(
+                source,
+                bufferPtr + _writePosition,
+                (nuint)firstCount);
+
+            IntegralByteMemory.Copy(
+                source + firstCount,
+                bufferPtr,
+                (nuint)secondCount);
         }
 
         _writePosition = (_writePosition + byteCount) % _buffer.Length;
         _byteCount += byteCount;
         _totalWritten += byteCount;
         return byteCount;
+    }
+
+    internal unsafe int Read(Span<byte> destination)
+    {
+        fixed (byte* destinationPtr = destination)
+        {
+            return Read(destinationPtr, destination.Length);
+        }
+    }
+
+    internal unsafe int Write(ReadOnlySpan<byte> source)
+    {
+        fixed (byte* sourcePtr = source)
+        {
+            return Write(sourcePtr, source.Length);
+        }
     }
 
     internal void Advance(int count)

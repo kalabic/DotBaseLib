@@ -1,0 +1,144 @@
+﻿using DotBase.Tools;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+namespace DotBase.Integral;
+
+
+/// <summary>
+///
+/// Just a byte pointer with information about integral values in memory it is referencing.
+///
+/// </summary>
+public unsafe readonly struct IntegralPtr
+{
+    public static readonly IntegralPtr NULL = new IntegralPtr();
+
+    /// <summary> The original, unadjusted base pointer. </summary>
+    public readonly byte* BytePtr;
+
+    public readonly IntegralFormat Fmt;
+
+
+    public bool IsNull { get { return BytePtr == null; } }
+
+    public IntegralPtr()
+    {
+        BytePtr = null;
+        Fmt = IntegralFormat.NONE;
+    }
+
+    public IntegralPtr(byte* ptr, IntegralFormat fmt)
+    {
+        fmt.Validate();
+
+        BytePtr = ptr;
+        Fmt = fmt;
+    }
+
+    public T* GetAs<T>() where T : unmanaged
+    {
+        return (T*)BytePtr;
+    }
+
+    public bool IsCompatible<T>()
+        where T : unmanaged
+    {
+        return Fmt.IsCompatible<T>();
+    }
+
+    public static implicit operator byte*(in IntegralPtr other) { return (byte*)other.BytePtr; }
+
+    public static implicit operator short*(in IntegralPtr other) { return (short*)(byte*)other.BytePtr; }
+
+
+
+    /// <summary>
+    ///
+    /// Special catch-all basket for wrapping up different integral types.
+    ///
+    /// </summary>
+    public readonly unsafe struct Any<T>
+        where T : unmanaged
+    {
+        public static implicit operator Any<T>(T* other) => new(other);
+
+        public static implicit operator Any<T>(T[] other) => new(other);
+
+        /// <summary> The GC owns Arrays. </summary>
+        public readonly T[]? Arr;
+
+        /// <summary> The caller owns pointers. </summary>
+        public readonly T* Ptr;
+
+        /// <summary> Default value determined by template parameter T. </summary>
+        public readonly IntegralType Format;
+
+
+        public bool IsArray { get { return Arr is not null; } }
+
+        public Any(T* other, IntegralType format = IntegralType.NONE)
+        {
+            Arr = null;
+            Ptr = other;
+            Format = (!GenericType<T>.IsByte && format == IntegralType.NONE) ? IntegralType.NONE.DefaultForType<T>() : format;
+            Debug.Assert(GenericType<T>.IsByte || Format.IsCompatible<T>(), $"Type {nameof(T)} cannot hold the supplied sample-value format.");
+        }
+
+        public Any(T[] other, IntegralType format = IntegralType.NONE)
+        {
+            Arr = other;
+            Ptr = default;
+            Format = (!GenericType<T>.IsByte && format == IntegralType.NONE) ? IntegralType.NONE.DefaultForType<T>() : format;
+            Debug.Assert(GenericType<T>.IsByte || Format.IsCompatible<T>(), $"Type {nameof(T)} cannot hold the supplied sample-value format.");
+        }
+
+        /// <summary> Returns an object that MUST be disposed. </summary>
+        public Fixed<T> MakeFixed()
+        {
+            return new Fixed<T>(this);
+        }
+    }
+
+
+    /// <summary>
+    ///
+    /// The caller-owned disposable pointer.
+    ///
+    /// </summary>
+    public readonly struct Fixed<T> : IDisposable
+        where T : unmanaged
+    {
+        public static implicit operator byte*(Fixed<T> other) => (byte*)other.Ptr;
+
+        private readonly GCHandle Handle;
+
+        public readonly T* Ptr;
+
+        public readonly IntegralType Format;
+
+        internal Fixed(Any<T> other)
+        {
+            if (other.Arr is not null)
+            {
+                Handle = GCHandle.Alloc(other.Arr, GCHandleType.Pinned);
+                Ptr = (T*)Handle.AddrOfPinnedObject();
+                Format = other.Format;
+            }
+            else
+            {
+                Handle = default;
+                Ptr = other.Ptr;
+                Format = other.Format;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Handle.IsAllocated)
+            {
+                Handle.Free();
+            }
+        }
+    }
+}

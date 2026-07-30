@@ -1,4 +1,6 @@
 using DotBase.Core;
+using DotBase.Integral;
+using DotBase.Integral.Internal;
 
 namespace DotBase.Buffers.Integral.Internal;
 
@@ -78,6 +80,46 @@ internal sealed class LockedRingBuffer<TEndian> : DisposableBase, IIntegralRingB
         }
     }
 
+    public int Read(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            return IntegralRingOperations<TEndian>.Read(
+                ref _storage,
+                destination);
+        }
+    }
+
+    public bool TryRead(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            return IntegralRingOperations<TEndian>.TryRead(
+                ref _storage,
+                destination);
+        }
+    }
+
+    public int Write(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            return IntegralRingOperations<TEndian>.Write(
+                ref _storage,
+                source);
+        }
+    }
+
+    public bool TryWrite(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            return IntegralRingOperations<TEndian>.TryWrite(
+                ref _storage,
+                source);
+        }
+    }
+
     public int Read(byte[] data, int offset, int count)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -92,11 +134,10 @@ internal sealed class LockedRingBuffer<TEndian> : DisposableBase, IIntegralRingB
     public unsafe int Read(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        Span<byte> destination = new(data + offset, count);
 
         lock (_lock)
         {
-            return _storage.Read(destination);
+            return _storage.Read(data + offset, count);
         }
     }
 
@@ -114,11 +155,10 @@ internal sealed class LockedRingBuffer<TEndian> : DisposableBase, IIntegralRingB
     public unsafe int Write(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        ReadOnlySpan<byte> source = new(data + offset, count);
 
         lock (_lock)
         {
-            return _storage.Write(source);
+            return _storage.Write(data + offset, count);
         }
     }
 

@@ -13,6 +13,7 @@ A helper library with foundational components for .NET applications.
 | [`DotBase.Cancellation`](src/DotBaseLib/Cancellation/README.md) | Cancellation-aware events and waits. |
 | [`DotBase.Core`](src/DotBaseLib/Core/README.md) | Disposal and finalization foundations. |
 | [`DotBase.Event`](src/DotBaseLib/Event/README.md) | Typed event producers, consumers, and containers. |
+| [`DotBase.Integral`](src/DotBaseLib/Integral/README.md) | Typed scalar memory views, numeric conversion, and endian-aware memory operations. |
 | [`DotBase.Log`](src/DotBaseLib/Log/README.md) | Lightweight logging and console utilities. |
 | [`DotBase.Tools`](src/DotBaseLib/Tools/README.md) | General-purpose type, task, and synchronization helpers. |
 

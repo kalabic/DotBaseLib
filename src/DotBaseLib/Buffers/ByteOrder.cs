@@ -8,3 +8,17 @@ public enum ByteOrder
     LittleEndian,
     BigEndian,
 }
+
+internal static class ByteOrderMethods
+{
+    internal static bool IsNativeCompatible(this ByteOrder value)
+    {
+        return value switch
+        {
+            ByteOrder.Native => true,
+            ByteOrder.LittleEndian => BitConverter.IsLittleEndian,
+            ByteOrder.BigEndian => !BitConverter.IsLittleEndian,
+            _ => throw new ArgumentOutOfRangeException(nameof(value)),
+        };
+    }
+}

@@ -33,6 +33,8 @@ public static class GenericType<T>
     /// </summary>
     public static readonly bool IsUInt8 = typeof(T) == typeof(byte);
 
+    public static readonly bool IsInt8 = typeof(T) == typeof(sbyte);
+
     public static readonly bool IsUInt = typeof(T) == typeof(uint);
 
     public static readonly bool IsNInt = typeof(T) == typeof(nint);

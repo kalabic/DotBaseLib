@@ -1,4 +1,6 @@
 using DotBase.Core;
+using DotBase.Integral;
+using DotBase.Integral.Internal;
 
 namespace DotBase.Buffers.Integral.Internal;
 
@@ -80,6 +82,78 @@ internal sealed class WaitableRingBuffer<TEndian> :
         }
     }
 
+    public int Read(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            int requiredByteCount =
+                IntegralRingOperations<TEndian>.GetRequestedByteCount(
+                    ref _storage,
+                    destination,
+                    nameof(destination));
+
+            if (!_storage.IsOpen)
+            {
+                return 0;
+            }
+
+            WaitForBytes(
+                requiredByteCount,
+                nameof(destination));
+
+            return _storage.IsOpen
+                ? IntegralRingOperations<TEndian>.Read(
+                    ref _storage,
+                    destination)
+                : 0;
+        }
+    }
+
+    public bool TryRead(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            return IntegralRingOperations<TEndian>.TryRead(
+                ref _storage,
+                destination);
+        }
+    }
+
+    public int Write(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            int count = IntegralRingOperations<TEndian>.Write(
+                ref _storage,
+                source);
+
+            if (count > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return count;
+        }
+    }
+
+    public bool TryWrite(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            bool completed =
+                IntegralRingOperations<TEndian>.TryWrite(
+                    ref _storage,
+                    source);
+
+            if (completed && source.IntegralLength > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return completed;
+        }
+    }
+
     public int Read(byte[] data, int offset, int count)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -89,7 +163,7 @@ internal sealed class WaitableRingBuffer<TEndian> :
     public unsafe int Read(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        return ReadBytes(new Span<byte>(data + offset, count));
+        return ReadBytes(data + offset, count);
     }
 
     public int Write(byte[] data, int offset, int count)
@@ -101,7 +175,7 @@ internal sealed class WaitableRingBuffer<TEndian> :
     public unsafe int Write(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        return WriteBytes(new ReadOnlySpan<byte>(data + offset, count));
+        return WriteBytes(data + offset, count);
     }
 
     public T Read<T>()
@@ -360,6 +434,35 @@ internal sealed class WaitableRingBuffer<TEndian> :
         lock (_lock)
         {
             int count = _storage.Write(source);
+            if (count > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return count;
+        }
+    }
+
+    private unsafe int ReadBytes(
+        byte* destination,
+        int byteCount)
+    {
+        lock (_lock)
+        {
+            WaitForBytes(byteCount, nameof(destination));
+            return _storage.IsOpen
+                ? _storage.Read(destination, byteCount)
+                : 0;
+        }
+    }
+
+    private unsafe int WriteBytes(
+        byte* source,
+        int byteCount)
+    {
+        lock (_lock)
+        {
+            int count = _storage.Write(source, byteCount);
             if (count > 0)
             {
                 Monitor.PulseAll(_lock);

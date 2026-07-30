@@ -1,4 +1,5 @@
 using DotBase.Buffers.Integral.Internal;
+using DotBase.Integral.Internal;
 using System.Diagnostics;
 
 namespace DotBase.Buffers.Integral;

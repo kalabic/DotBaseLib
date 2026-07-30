@@ -1,4 +1,6 @@
 using DotBase.Core;
+using DotBase.Integral;
+using DotBase.Integral.Internal;
 
 namespace DotBase.Buffers.Integral.Internal;
 
@@ -53,6 +55,34 @@ internal sealed class ByteRing<TEndian> : DisposableBase, IIntegralRingBuffer
         IntegralRingOperations<TEndian>.AdvanceBy<T>(ref _storage, count);
     }
 
+    public int Read(in IntegralSpan destination)
+    {
+        return IntegralRingOperations<TEndian>.Read(
+            ref _storage,
+            destination);
+    }
+
+    public bool TryRead(in IntegralSpan destination)
+    {
+        return IntegralRingOperations<TEndian>.TryRead(
+            ref _storage,
+            destination);
+    }
+
+    public int Write(in IntegralSpan source)
+    {
+        return IntegralRingOperations<TEndian>.Write(
+            ref _storage,
+            source);
+    }
+
+    public bool TryWrite(in IntegralSpan source)
+    {
+        return IntegralRingOperations<TEndian>.TryWrite(
+            ref _storage,
+            source);
+    }
+
     public int Read(byte[] data, int offset, int count)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -62,7 +92,7 @@ internal sealed class ByteRing<TEndian> : DisposableBase, IIntegralRingBuffer
     public unsafe int Read(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        return _storage.Read(new Span<byte>(data + offset, count));
+        return _storage.Read(data + offset, count);
     }
 
     public int Write(byte[] data, int offset, int count)
@@ -74,7 +104,7 @@ internal sealed class ByteRing<TEndian> : DisposableBase, IIntegralRingBuffer
     public unsafe int Write(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        return _storage.Write(new ReadOnlySpan<byte>(data + offset, count));
+        return _storage.Write(data + offset, count);
     }
 
     public T Read<T>()
