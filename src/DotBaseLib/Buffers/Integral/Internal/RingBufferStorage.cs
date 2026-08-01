@@ -12,7 +12,8 @@ namespace DotBase.Buffers.Integral.Internal;
 /// </summary>
 /// <remarks>
 /// <c>ReadLE*</c> / <c>WriteLE*</c> reverse external buffer bytes relative to ring
-/// stream order. <c>ReadBE*</c> / <c>WriteBE*</c> copy stream order as-is.
+/// stream order (used by span endian-flip on both LE and BE monomorphized rings).
+/// <c>ReadBE*</c> / <c>WriteBE*</c> copy stream order as-is.
 /// Contiguous transfers use unaligned word load/store; wrap uses case tables.
 /// </remarks>
 internal unsafe struct RingBufferStorage
@@ -53,6 +54,55 @@ internal unsafe struct RingBufferStorage
     internal readonly long TotalRead => _totalRead;
 
     internal readonly long TotalWritten => _totalWritten;
+
+    /// <summary>Base of the native slab; null when closed or zero-capacity.</summary>
+    internal readonly byte* Ptr => _ptr;
+
+    internal readonly int ReadPosition => _readPosition;
+
+    internal readonly int WritePosition => _writePosition;
+
+    /// <summary>
+    /// Contiguous free segments in stream order (at most two). First starts at
+    /// <see cref="WritePosition"/>; second (if any) starts at offset 0.
+    /// </summary>
+    internal readonly void GetFreeSegments(
+        out int firstOffset,
+        out int firstByteCount,
+        out int secondByteCount)
+    {
+        int free = FreeBytes;
+        firstOffset = _writePosition;
+        firstByteCount = Math.Min(free, _byteCapacity - _writePosition);
+        if (_byteCapacity == 0)
+        {
+            firstByteCount = 0;
+        }
+
+        secondByteCount = free - firstByteCount;
+    }
+
+    /// <summary>
+    /// Contiguous stored segments in stream order (at most two). First starts at
+    /// <see cref="ReadPosition"/>; second (if any) starts at offset 0.
+    /// </summary>
+    internal readonly void GetStoredSegments(
+        out int firstOffset,
+        out int firstByteCount,
+        out int secondByteCount)
+    {
+        int stored = _storedBytes;
+        firstOffset = _readPosition;
+        firstByteCount = Math.Min(stored, _byteCapacity - _readPosition);
+        if (_byteCapacity == 0)
+        {
+            firstByteCount = 0;
+        }
+
+        secondByteCount = stored - firstByteCount;
+    }
+
+
 
     /// <summary>
     /// Exactly <paramref name="byteCount"/> bytes into <paramref name="destination"/>.
@@ -855,9 +905,20 @@ internal unsafe struct RingBufferStorage
         _byteCapacity = 0;
     }
 
+    /// <summary>
+    /// Advance the read head after an external drain (no copy). Caller must have
+    /// already consumed <paramref name="byteCount"/> stored bytes from the head.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AdvanceReadHead(int byteCount)
+    internal void AdvanceReadHead(int byteCount)
     {
+        Debug.Assert(byteCount >= 0);
+        Debug.Assert(byteCount <= _storedBytes);
+        if (byteCount == 0)
+        {
+            return;
+        }
+
         _readPosition += byteCount;
         if (_readPosition >= _byteCapacity)
         {
@@ -868,9 +929,20 @@ internal unsafe struct RingBufferStorage
         _totalRead += byteCount;
     }
 
+    /// <summary>
+    /// Advance the write head after an external fill (no copy). Caller must have
+    /// already written <paramref name="byteCount"/> bytes into free space at the head.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AdvanceWriteHead(int byteCount)
+    internal void AdvanceWriteHead(int byteCount)
     {
+        Debug.Assert(byteCount >= 0);
+        Debug.Assert(byteCount <= FreeBytes);
+        if (byteCount == 0)
+        {
+            return;
+        }
+
         _writePosition += byteCount;
         if (_writePosition >= _byteCapacity)
         {

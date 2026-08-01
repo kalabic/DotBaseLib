@@ -41,14 +41,14 @@ public unsafe class IntegralSpanTests
                 0,
                 sizeof(int),
                 IntegralType.Int32,
-                1));
+                1).Validate());
         Assert.Throws<ArgumentException>(
             () => new IntegralSpan(
                 null,
                 sizeof(int),
                 0,
                 IntegralType.Int32,
-                1));
+                1).Validate());
     }
 
     [Fact]
@@ -63,28 +63,28 @@ public unsafe class IntegralSpanTests
                 -1,
                 sizeof(int),
                 IntegralType.Int32,
-                1));
+                1).Validate());
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new IntegralSpan(
                 (byte*)address,
                 0,
                 -1,
                 IntegralType.Int32,
-                1));
+                1).Validate());
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new IntegralSpan(
                 (byte*)address,
                 1,
                 sizeof(int),
                 IntegralType.Int32,
-                1));
+                1).Validate());
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new IntegralSpan(
                 (byte*)address,
                 0,
                 sizeof(int) + 1,
                 IntegralType.Int32,
-                1));
+                1).Validate());
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public unsafe class IntegralSpanTests
                 0,
                 sizeof(int),
                 IntegralType.Int32,
-                1));
+                1).Validate());
     }
 
     [Fact]
@@ -113,8 +113,8 @@ public unsafe class IntegralSpanTests
                 IntegralType.Int32,
                 4);
 
-            Assert.Equal(11, span.IntegralLength);
-            Assert.Equal(2, span.BlockLength);
+            Assert.Equal(11, span.ValueCount);
+            Assert.Equal(2, span.BlockCount);
             Assert.Equal(3, span.TrailingValueCount);
             Assert.Equal(4, span.Capacity.BlockCapacity);
             Assert.Equal(16, span.Capacity.BlockByteCount);
@@ -140,14 +140,14 @@ public unsafe class IntegralSpanTests
             Assert.Equal((nint)span.BytePtr, (nint)blocks.BytePtr);
             Assert.Equal(3 * sizeof(int), blocks.Offset);
             Assert.Equal(6 * sizeof(int), blocks.Length);
-            Assert.Equal(2, blocks.BlockLength);
+            Assert.Equal(2, blocks.BlockCount);
             Assert.Equal(ByteOrder.BigEndian, blocks.Format.ByteOrder);
 
             IntegralSpan valuesSlice = span.GetValueSpan(2, 5);
             Assert.Equal(2 * sizeof(int), valuesSlice.Offset);
             Assert.Equal(5 * sizeof(int), valuesSlice.Length);
-            Assert.Equal(5, valuesSlice.IntegralLength);
-            Assert.Equal(1, valuesSlice.BlockLength);
+            Assert.Equal(5, valuesSlice.ValueCount);
+            Assert.Equal(1, valuesSlice.BlockCount);
             Assert.Equal(2, valuesSlice.TrailingValueCount);
 
             IntegralSpan bytes = span.GetSubSpan(
@@ -199,12 +199,115 @@ public unsafe class IntegralSpanTests
                 3);
 
             IntegralSpan middle = span.GetValueSpan(2, 3);
-            Assert.Equal(3, middle.IntegralLength);
+            Assert.Equal(3, middle.ValueCount);
             Assert.Equal(33, middle.AtIndex<int>(0));
             Assert.Equal(44, middle.AtIndex<int>(1));
             Assert.Equal(55, middle.AtIndex<int>(2));
             Assert.Equal(IntegralType.Int32, middle.IntegralValueType);
             Assert.Equal(3, middle.Capacity.BlockCapacity);
+        }
+    }
+
+    [Fact]
+    public void GetBlockSpanRangeMatchesOffsetCountAndRetypeKeepsParentUnits()
+    {
+        byte[] storage = new byte[16];
+        for (int i = 0; i < storage.Length; ++i)
+        {
+            storage[i] = unchecked((byte)(i + 1));
+        }
+
+        fixed (byte* pointer = storage)
+        {
+            IntegralSpan slab = new(
+                pointer,
+                0,
+                storage.Length,
+                IntegralType.UInt8,
+                1);
+
+            // On UInt8 BC=1 parent: BlockOffset/BlockCount numerically equal byte offsets.
+            IntegralRange range = new(
+                blockOffset: 4,
+                blockCount: 8,
+                blockByteSize: 1);
+            Assert.Equal(4, range.BlockOffset);
+            Assert.Equal(8, range.BlockCount);
+            Assert.Equal(1, range.BlockByteSize);
+            Assert.Equal(4, range.ByteOffset);
+            Assert.Equal(8, range.ByteLength);
+
+            IntegralSpan viaRange = slab.GetBlockSpan(range);
+            IntegralSpan viaArgs = slab.GetBlockSpan(4, 8);
+            Assert.Equal(viaArgs.Offset, viaRange.Offset);
+            Assert.Equal(viaArgs.Length, viaRange.Length);
+            Assert.Equal(viaArgs.ValueCount, viaRange.ValueCount);
+
+            // 8 parent blocks (bytes here); retype to Int32 does not treat 8 as int32 values.
+            IntegralSpan asInt32 = slab.GetBlockSpan(
+                range,
+                IntegralType.Int32,
+                blockCapacity: 1);
+            Assert.Equal(8, asInt32.Length);
+            Assert.Equal(2, asInt32.ValueCount);
+            Assert.Equal(slab.Format.ByteOrder, asInt32.Format.ByteOrder);
+        }
+    }
+
+    [Fact]
+    public void ChangeFormatRelabelsRegionWithoutMovingMemory()
+    {
+        int[] values = [0x01020304, 0x05060708];
+        fixed (int* pointer = values)
+        {
+            IntegralSpan bytes = new(
+                (byte*)pointer,
+                0,
+                values.Length * sizeof(int),
+                IntegralType.UInt8,
+                1);
+
+            IntegralSpan beBytes = new(
+                bytes.BytePtr,
+                bytes.Offset,
+                bytes.Length,
+                new IntegralFormat(IntegralType.UInt8, 1, ByteOrder.BigEndian));
+
+            IntegralSpan asInt32 = beBytes.ChangeFormat(
+                IntegralType.Int32,
+                blockCapacity: 2);
+
+            Assert.Equal((nint)beBytes.BytePtr, (nint)asInt32.BytePtr);
+            Assert.Equal(beBytes.Offset, asInt32.Offset);
+            Assert.Equal(beBytes.Length, asInt32.Length);
+            Assert.Equal(IntegralType.Int32, asInt32.IntegralValueType);
+            Assert.Equal(2, asInt32.Capacity.BlockCapacity);
+            // Byte order is preserved from the source span, not an argument.
+            Assert.Equal(ByteOrder.BigEndian, asInt32.Format.ByteOrder);
+            Assert.Equal(2, asInt32.ValueCount);
+            Assert.Equal(1, asInt32.BlockCount);
+
+            IntegralSpan empty = IntegralSpan.Empty.ChangeFormat(IntegralType.Int16);
+            Assert.Equal(0, empty.Length);
+            Assert.Equal(0, (nint)empty.BytePtr);
+        }
+    }
+
+    [Fact]
+    public void ChangeFormatCheckedRejectsMisalignedGeometry()
+    {
+        byte[] storage = new byte[6];
+        fixed (byte* pointer = storage)
+        {
+            IntegralSpan bytes = new(
+                pointer,
+                0,
+                storage.Length,
+                IntegralType.UInt8,
+                1);
+
+            Assert.ThrowsAny<ArgumentException>(
+                () => bytes.ChangeFormatChecked(IntegralType.Int32));
         }
     }
 
@@ -267,16 +370,20 @@ public unsafe class IntegralSpanTests
     [Fact]
     public void ArithmeticAndCapacityOverflowAreRejected()
     {
-        Assert.Throws<OverflowException>(
-            () => new IntegralFormat(
-                IntegralType.UInt64,
-                int.MaxValue));
+        // ValueSize × BlockCapacity is a long product — fits for any two ints.
+        IntegralFormat largeBlockFormat = new(
+            IntegralType.UInt64,
+            int.MaxValue);
+        largeBlockFormat.Validate();
+        Assert.Equal(
+            (long)sizeof(ulong) * int.MaxValue,
+            largeBlockFormat.BytesPerBlock);
 
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new IntegralCapacity(
                 long.MaxValue,
                 IntegralType.UInt64,
-                1).ThrowIfArgumentOutOfRange());
+                1).Validate());
 
         nint address = 8;
         IntegralSpan highOffset = new(
@@ -296,19 +403,18 @@ public unsafe class IntegralSpanTests
                 0,
                 long.MaxValue,
                 IntegralType.UInt64,
-                1));
+                1).Validate());
     }
 
     private static void AssertEmpty(in IntegralSpan span)
     {
         Assert.Equal(0, span.Offset);
         Assert.Equal(0, span.Length);
-        Assert.Equal(0, span.IntegralLength);
-        Assert.Equal(0, span.BlockLength);
+        Assert.Equal(0, span.ValueCount);
+        Assert.Equal(0, span.BlockCount);
         Assert.Equal(0, span.TrailingValueCount);
-        Assert.Equal(IntegralType.NONE, span.IntegralValueType);
         Assert.Equal(0, (nint)span.BytePtr);
         Assert.Equal(0, (nint)span.DataPtr);
-        Assert.True(span.Capacity.IsValid());
+        Assert.True(span.Capacity.IsValueAligned());
     }
 }

@@ -73,7 +73,7 @@ public class IntegralRingBufferTests
     public unsafe void InvalidRawDescriptorsFailBeforeRingMutation()
     {
         using IIntegralRingBuffer ring =
-            IntegralRingBuffer.Create(
+            IntegralRingBuffer.CreateUnlocked(
                 2 * sizeof(int),
                 ForeignByteOrder);
         int[] sourceValues = [1, 2, 3];
@@ -85,7 +85,7 @@ public class IntegralRingBufferTests
                 sourceValues.Length,
                 IntegralType.Int32);
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => ring.TryWrite(
+                () => ring.TryWriteChecked(
                     oversized));
             Assert.Equal(0, ring.StoredBytes);
 
@@ -106,7 +106,7 @@ public class IntegralRingBufferTests
                 2);
 
             Assert.Throws<ArgumentException>(
-                () => ring.TryWrite(
+                () => ring.TryWriteChecked(
                     capacityMismatch));
             Assert.Equal(0, ring.StoredBytes);
 
@@ -134,7 +134,7 @@ public class IntegralRingBufferTests
                 (ByteOrder)int.MaxValue;
 
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => ring.TryWrite(
+                () => ring.TryWriteChecked(
                     invalidFormat));
             Assert.Equal(0, ring.StoredBytes);
         }
@@ -144,7 +144,7 @@ public class IntegralRingBufferTests
     public unsafe void FailedRawTryOperationsLeaveBothSidesUnchanged()
     {
         using IIntegralRingBuffer ring =
-            IntegralRingBuffer.Create(
+            IntegralRingBuffer.CreateUnlocked(
                 2 * sizeof(int),
                 ForeignByteOrder);
 
@@ -164,7 +164,7 @@ public class IntegralRingBufferTests
                     destinationPtr,
                     2,
                     IntegralType.Int32);
-            Assert.False(ring.TryRead(
+            Assert.False(ring.TryReadChecked(
                 destination));
         }
 
@@ -180,7 +180,7 @@ public class IntegralRingBufferTests
                 (byte*)sourcePtr,
                 2,
                 IntegralType.Int32);
-            Assert.False(ring.TryWrite(
+            Assert.False(ring.TryWriteChecked(
                 source));
         }
 
@@ -200,7 +200,7 @@ public class IntegralRingBufferTests
         int size = Unsafe.SizeOf<T>();
 
         using (IIntegralRingBuffer ring =
-               IntegralRingBuffer.Create(
+               IntegralRingBuffer.CreateUnlocked(
                    3 * size,
                    ForeignByteOrder))
         {
@@ -249,7 +249,7 @@ public class IntegralRingBufferTests
         }
 
         using (IIntegralRingBuffer ring =
-               IntegralRingBuffer.Create(
+               IntegralRingBuffer.CreateUnlocked(
                    2 * size,
                    ForeignByteOrder))
         {
@@ -289,7 +289,7 @@ public class IntegralRingBufferTests
         }
 
         using (IIntegralRingBuffer ring =
-               IntegralRingBuffer.Create(
+               IntegralRingBuffer.CreateUnlocked(
                    4 * size,
                    ForeignByteOrder))
         {
@@ -344,7 +344,7 @@ public class IntegralRingBufferTests
         where T : unmanaged
     {
         using IIntegralRingBuffer ring =
-            IntegralRingBuffer.Create(
+            IntegralRingBuffer.CreateUnlocked(
                 checked(values.Length * Unsafe.SizeOf<T>()),
                 ForeignByteOrder);
 

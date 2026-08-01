@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DotBase.Buffers;
-using DotBase.Integral.Internal;
 
 namespace DotBase.Integral;
 
@@ -52,11 +51,34 @@ public readonly unsafe struct IntegralSpan
 
     public IntegralType IntegralValueType { get { return Ptr.Fmt.ValueType; } }
 
-    public long IntegralLength { get { return Capacity.TotalValueCount; } }
+    public long ValueCount { get { return Capacity.TotalValueCount; } }
 
-    public long BlockLength { get { return Capacity.BlockCount; } }
+    public long BlockCount { get { return Capacity.BlockCount; } }
 
     public int TrailingValueCount { get { return Capacity.TrailingValueCount; } }
+
+    /// <summary>
+    /// <see cref="Format"/> byte order with <see cref="ByteOrder.Native"/> folded to
+    /// host little/big endian.
+    /// </summary>
+    public ByteOrder ResolvedByteOrder => Format.ByteOrder.Resolve();
+
+    /// <summary>
+    /// Whether this span's resolved byte order matches <paramref name="otherEndian"/>
+    /// (after resolving <see cref="ByteOrder.Native"/> on both sides).
+    /// </summary>
+    public bool IsEqual(ByteOrder otherEndian)
+    {
+        return ResolvedByteOrder == otherEndian.Resolve();
+    }
+
+    /// <summary>
+    /// Whether this span and <paramref name="other"/> share the same resolved byte order.
+    /// </summary>
+    public bool IsEqual(in IntegralSpan other)
+    {
+        return IsEqual(other.Format.ByteOrder);
+    }
 
 
     public IntegralSpan()
@@ -67,6 +89,45 @@ public readonly unsafe struct IntegralSpan
         Capacity = IntegralCapacity.Zero;
     }
 
+    /// <summary>
+    /// Builds a view over <paramref name="valueCount"/> contiguous values at <paramref name="ptr"/>.
+    /// Does not allocate or pin; the pointer must remain valid for the span's use.
+    /// </summary>
+    public static IntegralSpan FromValues<T>(
+        T* ptr,
+        long valueCount,
+        int blockCapacity = 1,
+        ByteOrder byteOrder = ByteOrder.Native,
+        IntegralType valueType = IntegralType.NONE)
+        where T : unmanaged
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(valueCount);
+
+        IntegralType resolvedType = valueType == IntegralType.NONE
+            ? IntegralType.NONE.DefaultForType<T>()
+            : valueType;
+        if (resolvedType == IntegralType.NONE)
+        {
+            throw new ArgumentException(
+                $"Type '{typeof(T)}' is not a supported integral scalar type.",
+                nameof(T));
+        }
+
+        if (!resolvedType.IsCompatible<T>())
+        {
+            throw new ArgumentException(
+                $"Type '{typeof(T)}' is not compatible with integral type '{resolvedType}'.",
+                nameof(valueType));
+        }
+
+        long byteLength = checked(valueCount * Unsafe.SizeOf<T>());
+        return new IntegralSpan(
+            (byte*)ptr,
+            0,
+            byteLength,
+            new IntegralFormat(resolvedType, blockCapacity, byteOrder));
+    }
+
     public IntegralSpan(byte* ptr, long offset, long length, IntegralType valueType, int blockValueCount)
         : this(ptr, offset, length, new IntegralFormat(valueType, blockValueCount))
     { }
@@ -75,53 +136,19 @@ public readonly unsafe struct IntegralSpan
         : this(new IntegralPtr(ptr, fmt), offset, length)
     { }
 
+    /// <summary>
+    /// Builds a span descriptor without validating format, ranges, or alignment.
+    /// Call <see cref="Validate"/> when the span will be used with checked APIs.
+    /// </summary>
     public IntegralSpan(in IntegralPtr ptr, long offset, long length)
     {
-        ptr.Fmt.Validate();
-
-        ArgumentOutOfRangeException.ThrowIfNegative(offset);
-        ArgumentOutOfRangeException.ThrowIfNegative(length);
-
-        if (ptr.IsNull && (offset != 0 || length != 0))
-        {
-            throw new ArgumentException(
-                "A null integral pointer can describe only the empty span.",
-                nameof(ptr));
-        }
-
-        IntegralCapacity capacity = new(
-            length,
-            ptr.Fmt.ValueType,
-            ptr.Fmt.BlockCapacity);
-        capacity.ThrowIfArgumentOutOfRange();
-
-        if (capacity.ValueByteCount > 0 &&
-            (offset % capacity.ValueByteCount) != 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(offset),
-                offset,
-                "The byte offset must be aligned to the scalar value size.");
-        }
-
-        // Value addresses must be natural-aligned for wire load/store.
-        if (!ptr.IsNull &&
-            capacity.ValueByteCount > 1 &&
-            (((nuint)ptr.BytePtr + (nuint)offset) %
-             (nuint)capacity.ValueByteCount) != 0)
-        {
-            throw new ArgumentException(
-                "The integral span base address plus offset must be " +
-                "natural-aligned to the scalar value size.",
-                nameof(ptr));
-        }
-
+        IntegralCapacity capacity = new(length, ptr.Fmt);
         this = new IntegralSpan(ptr, offset, length, capacity);
     }
 
     /// <summary>
-    /// Trusted slice constructor. Caller must ensure format validity, non-negative
-    /// ranges, null-pointer rules, and value-size alignment.
+    /// Slice constructor. Does not re-validate; used after a parent was validated
+    /// or when the caller accepts an unvalidated descriptor.
     /// </summary>
     private IntegralSpan(
         in IntegralPtr ptr,
@@ -133,6 +160,96 @@ public readonly unsafe struct IntegralSpan
         Offset = offset;
         Length = length;
         Capacity = capacity;
+    }
+
+    /// <summary>
+    /// Whether format, capacity, ranges, null rules, and scalar alignment are consistent.
+    /// </summary>
+    public bool IsValid()
+    {
+        if (!Format.IsValid())
+        {
+            return false;
+        }
+
+        if (Offset < 0 || Length < 0)
+        {
+            return false;
+        }
+
+        if (Ptr.IsNull && (Offset != 0 || Length != 0))
+        {
+            return false;
+        }
+
+        if (!Capacity.IsValid() || Capacity.ByteCount != Length)
+        {
+            return false;
+        }
+
+        if (Capacity.ValueByteCount > 0 &&
+            (Offset % Capacity.ValueByteCount) != 0)
+        {
+            return false;
+        }
+
+        if (!Ptr.IsNull &&
+            Capacity.ValueByteCount > 1 &&
+            (((nuint)Ptr.BytePtr + (nuint)Offset) %
+             (nuint)Capacity.ValueByteCount) != 0)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Throws if format, capacity, ranges, null rules, or scalar alignment are invalid.
+    /// Constructors do not call this; call sites decide.
+    /// </summary>
+    public void Validate()
+    {
+        Format.Validate();
+
+        ArgumentOutOfRangeException.ThrowIfNegative(Offset);
+        ArgumentOutOfRangeException.ThrowIfNegative(Length);
+
+        if (Ptr.IsNull && (Offset != 0 || Length != 0))
+        {
+            throw new ArgumentException(
+                "A null integral pointer can describe only the empty span.",
+                nameof(Ptr));
+        }
+
+        if (Capacity.ByteCount != Length)
+        {
+            throw new ArgumentException(
+                "Capacity byte count must match span length.",
+                nameof(Capacity));
+        }
+
+        Capacity.Validate();
+
+        if (Capacity.ValueByteCount > 0 &&
+            (Offset % Capacity.ValueByteCount) != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(Offset),
+                Offset,
+                "The byte offset must be aligned to the scalar value size.");
+        }
+
+        if (!Ptr.IsNull &&
+            Capacity.ValueByteCount > 1 &&
+            (((nuint)Ptr.BytePtr + (nuint)Offset) %
+             (nuint)Capacity.ValueByteCount) != 0)
+        {
+            throw new ArgumentException(
+                "The integral span base address plus offset must be " +
+                "natural-aligned to the scalar value size.",
+                nameof(Ptr));
+        }
     }
 
     /// <summary> Parameter <paramref name="index"/> is the linear index of an integral value. </summary>
@@ -177,7 +294,7 @@ public readonly unsafe struct IntegralSpan
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
             index,
-            IntegralLength);
+            ValueCount);
 
         return DataPtr + index * Capacity.ValueByteCount;
     }
@@ -189,7 +306,7 @@ public readonly unsafe struct IntegralSpan
         ArgumentOutOfRangeException.ThrowIfNegative(blockValueIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
             blockIndex,
-            BlockLength);
+            BlockCount);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
             blockValueIndex,
             Capacity.BlockCapacity);
@@ -229,7 +346,7 @@ public readonly unsafe struct IntegralSpan
         ValidateRange(
             blockOffset,
             blockCount,
-            BlockLength,
+            BlockCount,
             nameof(blockOffset),
             nameof(blockCount));
 
@@ -238,12 +355,58 @@ public readonly unsafe struct IntegralSpan
             checked(blockCount * Capacity.BlockByteCount));
     }
 
+    /// <summary>
+    /// Slice this span to <paramref name="range"/> using
+    /// <see cref="IntegralRange.BlockOffset"/> / <see cref="IntegralRange.BlockCount"/>
+    /// (parent block units only — not bytes or scalar values).
+    /// </summary>
+    public IntegralSpan GetBlockSpan(in IntegralRange range)
+    {
+        return GetBlockSpan(range.BlockOffset, range.BlockCount);
+    }
+
+    /// <summary>
+    /// Parent-block slice, then re-label with type and block capacity
+    /// (preserves this span's byte order and rate via <see cref="ChangeFormat"/>).
+    /// <paramref name="range"/> stays in <b>parent</b> block units; it is not
+    /// rescaled to the new type's blocks or values.
+    /// </summary>
+    public IntegralSpan GetBlockSpan(
+        in IntegralRange range,
+        IntegralType valueType,
+        int blockCapacity = 1)
+    {
+        return GetBlockSpan(range).ChangeFormat(valueType, blockCapacity);
+    }
+
+    /// <summary>
+    /// Parent-block slice, then re-label with a full format (trusted).
+    /// <paramref name="range"/> stays in <b>parent</b> block units; it is not
+    /// rescaled to the new format's block geometry.
+    /// </summary>
+    public IntegralSpan GetBlockSpan(
+        in IntegralRange range,
+        in IntegralFormat format)
+    {
+        IntegralSpan slice = GetBlockSpan(range);
+        if (slice.Length == 0)
+        {
+            return Empty;
+        }
+
+        return new IntegralSpan(
+            slice.BytePtr,
+            slice.Offset,
+            slice.Length,
+            format);
+    }
+
     public IntegralSpan GetValueSpan(long valueOffset, long valueCount)
     {
         ValidateRange(
             valueOffset,
             valueCount,
-            IntegralLength,
+            ValueCount,
             nameof(valueOffset),
             nameof(valueCount));
 
@@ -286,6 +449,98 @@ public readonly unsafe struct IntegralSpan
         return new IntegralSpan(Ptr, newOffset, byteLength, capacity);
     }
 
+    /// <summary>
+    /// Same memory region with a different value type / block layout. Does not
+    /// convert data and does not change <see cref="IntegralFormat.ByteOrder"/>
+    /// or <see cref="IntegralFormat.ByteRate"/> (those stay from this span).
+    /// Use <see cref="IntegralMemory.Convert"/> / <see cref="IntegralMemory.ReverseCopy"/>
+    /// for content transforms.
+    /// <para>
+    /// <b>Trusted:</b> does not validate format or geometry under the new value size.
+    /// Call <see cref="Validate"/> or use <see cref="ChangeFormatChecked"/> when the
+    /// descriptor may be hostile.
+    /// </para>
+    /// </summary>
+    public IntegralSpan ChangeFormat(
+        IntegralType valueType,
+        int blockCapacity = 1)
+    {
+        return ChangeFormatCore(
+            new IntegralFormat(
+                valueType,
+                blockCapacity,
+                Format.ByteOrder,
+                Format.ByteRate));
+    }
+
+    /// <summary>
+    /// Size-only format (<see cref="IntegralType.NONE"/>) variant of
+    /// <see cref="ChangeFormat(IntegralType, int)"/>.
+    /// </summary>
+    public IntegralSpan ChangeFormat(
+        int valueSize,
+        int blockCapacity = 1)
+    {
+        return ChangeFormatCore(
+            new IntegralFormat(
+                valueSize,
+                blockCapacity,
+                Format.ByteOrder,
+                Format.ByteRate));
+    }
+
+    /// <summary>
+    /// Same as <see cref="ChangeFormat(IntegralType, int)"/>, then validates
+    /// the resulting span.
+    /// </summary>
+    public IntegralSpan ChangeFormatChecked(
+        IntegralType valueType,
+        int blockCapacity = 1)
+    {
+        return ChangeFormatCheckedCore(
+            new IntegralFormat(
+                valueType,
+                blockCapacity,
+                Format.ByteOrder,
+                Format.ByteRate));
+    }
+
+    /// <summary>
+    /// Size-only format variant of <see cref="ChangeFormatChecked(IntegralType, int)"/>.
+    /// </summary>
+    public IntegralSpan ChangeFormatChecked(
+        int valueSize,
+        int blockCapacity = 1)
+    {
+        return ChangeFormatCheckedCore(
+            new IntegralFormat(
+                valueSize,
+                blockCapacity,
+                Format.ByteOrder,
+                Format.ByteRate));
+    }
+
+    private IntegralSpan ChangeFormatCore(in IntegralFormat format)
+    {
+        if (Length == 0)
+        {
+            return Empty;
+        }
+
+        return new IntegralSpan(BytePtr, Offset, Length, format);
+    }
+
+    private IntegralSpan ChangeFormatCheckedCore(in IntegralFormat format)
+    {
+        IntegralSpan changed = ChangeFormatCore(format);
+        if (changed.Length != 0)
+        {
+            changed.Validate();
+        }
+
+        return changed;
+    }
+
     private T ReadScalar<T>(byte* source)
         where T : unmanaged
     {
@@ -306,13 +561,13 @@ public readonly unsafe struct IntegralSpan
         switch (size)
         {
             case 2:
-                IntegralWire.Swap2(hostPtr, source);
+                IntegralPrimitives.Swap2(hostPtr, source);
                 break;
             case 4:
-                IntegralWire.Swap4(hostPtr, source);
+                IntegralPrimitives.Swap4(hostPtr, source);
                 break;
             case 8:
-                IntegralWire.Swap8(hostPtr, source);
+                IntegralPrimitives.Swap8(hostPtr, source);
                 break;
             default:
                 throw new NotSupportedException(
@@ -342,13 +597,13 @@ public readonly unsafe struct IntegralSpan
         switch (size)
         {
             case 2:
-                IntegralWire.Swap2(destination, hostPtr);
+                IntegralPrimitives.Swap2(destination, hostPtr);
                 return;
             case 4:
-                IntegralWire.Swap4(destination, hostPtr);
+                IntegralPrimitives.Swap4(destination, hostPtr);
                 return;
             case 8:
-                IntegralWire.Swap8(destination, hostPtr);
+                IntegralPrimitives.Swap8(destination, hostPtr);
                 return;
             default:
                 throw new NotSupportedException(

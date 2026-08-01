@@ -205,7 +205,7 @@ public unsafe class RingBufferStorageTests
     [Fact]
     public void ScalarIntThroughRingBufferMatchesHostOnNativeEndian()
     {
-        using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.Create(
+        using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.CreateUnlocked(
             64,
             DotBase.Buffers.ByteOrder.Native);
 
@@ -231,7 +231,7 @@ public unsafe class RingBufferStorageTests
                      DotBase.Buffers.ByteOrder.BigEndian,
                  })
         {
-            using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.Create(
+            using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.CreateUnlocked(
                 128,
                 order);
 
@@ -256,7 +256,7 @@ public unsafe class RingBufferStorageTests
             return;
         }
 
-        using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.Create(
+        using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.CreateUnlocked(
             256,
             DotBase.Buffers.ByteOrder.BigEndian);
 
@@ -271,7 +271,7 @@ public unsafe class RingBufferStorageTests
     [Fact]
     public void BulkPartialReadAndWriteHonorCapacity()
     {
-        using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.Create(
+        using var ring = DotBase.Buffers.Integral.IntegralRingBuffer.CreateUnlocked(
             12,
             DotBase.Buffers.ByteOrder.Native);
 

@@ -123,11 +123,12 @@ public unsafe class ScalarCodecTests
     [Fact]
     public void UndefinedByteOrderIsRejected()
     {
+        IntegralFormat format = new(
+            IntegralType.Int32,
+            1,
+            (ByteOrder)int.MaxValue);
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new IntegralFormat(
-                IntegralType.Int32,
-                1,
-                (ByteOrder)int.MaxValue));
+            () => format.Validate());
     }
 
     private static void RunBoundsCase<T>(

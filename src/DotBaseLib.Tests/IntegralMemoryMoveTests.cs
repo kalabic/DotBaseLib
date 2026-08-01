@@ -145,7 +145,7 @@ public unsafe class IntegralMemoryMoveTests
                 values.Length,
                 IntegralType.Int32,
                 ByteOrder.BigEndian);
-            IntegralMemory.Move(
+            IntegralMemory.ReverseMove(
                 little,
                 big);
 
@@ -232,7 +232,7 @@ public unsafe class IntegralMemoryMoveTests
                 }
             }
 
-            IntegralMemory.Move(
+            IntegralMemory.ConvertMove(
                 source,
                 destination,
                 valueCount,

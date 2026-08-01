@@ -1,35 +1,21 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 
-namespace DotBase.Integral.Internal;
+namespace DotBase.Integral;
 
 
 /// <summary>
-/// Aligned 2/4/8-byte pointer ops for integral wire.
+/// Aligned 2/4/8-byte pointer ops for integral primitives.
 /// Non-generic — call sites size-switch and land here.
 /// <para>
 /// <see cref="IntegralSpan"/> keeps value addresses aligned to the scalar size
 /// (offset multiples of <c>ValueByteCount</c> from an aligned base). Compatible
-/// host/wire endian is a single aligned word load/store; opposite endian is
+/// host/primitive endian is a single aligned word load/store; opposite endian is
 /// <see cref="Swap2"/> / <see cref="Swap4"/> / <see cref="Swap8"/>.
 /// </para>
 /// </summary>
-internal static unsafe class IntegralWire
+internal static unsafe class IntegralPrimitives
 {
-    /// <summary>
-    /// Host must bswap when interpreting multi-byte LE wire as host values.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool NeedsSwapForLeWire(int size) =>
-        !BitConverter.IsLittleEndian && size > 1;
-
-    /// <summary>
-    /// Host must bswap when interpreting multi-byte BE wire as host values.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool NeedsSwapForBeWire(int size) =>
-        BitConverter.IsLittleEndian && size > 1;
-
     // ---- Aligned copy (same byte layout) ----
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -50,7 +36,7 @@ internal static unsafe class IntegralWire
         *(ulong*)destination = *(ulong*)source;
     }
 
-    // ---- Aligned endian swap (wire ↔ host when layouts differ) ----
+    // ---- Aligned endian swap (primitive ↔ host when layouts differ) ----
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Swap2(byte* destination, byte* source)

@@ -1,125 +1,28 @@
 using System.Diagnostics;
 using DotBase.Integral;
-using DotBase.Integral.Internal;
 
 namespace DotBase.Buffers.Integral.Internal;
 
 
 /// <summary>
-/// IntegralSpan convert-on-transfer only. Typed scalar/bulk R/W lives on the ring types.
+/// Shared IntegralSpan ring transfer helpers.
+/// <para>
+/// On <see cref="RingBufferStorage"/>, <c>ReadLE*</c>/<c>WriteLE*</c> reverse
+/// external bytes relative to stream order; <c>ReadBE*</c>/<c>WriteBE*</c> copy
+/// stream order as-is. Flip paths therefore use the LE* helpers on both LE and
+/// BE rings — the name means reverse-on-transfer, not ring wire endian.
+/// </para>
 /// </summary>
-internal static class IntegralRingOperationsLE
+internal static unsafe class IntegralRingSpanOps
 {
     private const int ScratchByteCount = 512;
 
-    internal static unsafe int Read(
-        ref RingBufferStorage storage,
-        in IntegralSpan destination)
-    {
-        int requestedByteCount = ValidateSpan(
-            ref storage,
-            destination,
-            nameof(destination));
-
-        if (!storage.IsOpen || requestedByteCount == 0)
-        {
-            return 0;
-        }
-
-        int valueByteCount = destination.Capacity.ValueByteCount;
-        int valueCount = Math.Min(
-            requestedByteCount / valueByteCount,
-            storage.StoredBytes / valueByteCount);
-
-        return ReadValues(
-            ref storage,
-            destination,
-            valueCount);
-    }
-
-    internal static unsafe bool TryRead(
-        ref RingBufferStorage storage,
-        in IntegralSpan destination)
-    {
-        int requiredByteCount = ValidateSpan(
-            ref storage,
-            destination,
-            nameof(destination));
-
-        if (!storage.IsOpen ||
-            storage.StoredBytes < requiredByteCount)
-        {
-            return false;
-        }
-
-        int valueCount = requiredByteCount == 0
-            ? 0
-            : requiredByteCount / destination.Capacity.ValueByteCount;
-        int readCount = ReadValues(
-            ref storage,
-            destination,
-            valueCount);
-        Debug.Assert(readCount == valueCount);
-        return true;
-    }
-
-    internal static unsafe int Write(
-        ref RingBufferStorage storage,
-        in IntegralSpan source)
-    {
-        int requestedByteCount = ValidateSpan(
-            ref storage,
-            source,
-            nameof(source));
-
-        if (!storage.IsOpen || requestedByteCount == 0)
-        {
-            return 0;
-        }
-
-        int valueByteCount = source.Capacity.ValueByteCount;
-        int valueCount = Math.Min(
-            requestedByteCount / valueByteCount,
-            storage.FreeBytes / valueByteCount);
-
-        return WriteValues(
-            ref storage,
-            source,
-            valueCount);
-    }
-
-    internal static unsafe bool TryWrite(
-        ref RingBufferStorage storage,
-        in IntegralSpan source)
-    {
-        int requiredByteCount = ValidateSpan(
-            ref storage,
-            source,
-            nameof(source));
-
-        if (!storage.IsOpen ||
-            storage.FreeBytes < requiredByteCount)
-        {
-            return false;
-        }
-
-        int valueCount = requiredByteCount == 0
-            ? 0
-            : requiredByteCount / source.Capacity.ValueByteCount;
-        int writtenCount = WriteValues(
-            ref storage,
-            source,
-            valueCount);
-        Debug.Assert(writtenCount == valueCount);
-        return true;
-    }
-
-    internal static unsafe int ValidateSpan(
+    internal static int ValidateSpan(
         ref RingBufferStorage storage,
         in IntegralSpan span,
         string parameterName)
     {
-        if (!span.Capacity.IsValid() ||
+        if (!span.Capacity.IsValueAligned() ||
             span.Capacity.ByteCount != span.Length ||
             span.Capacity.BlockCapacity != span.Format.BlockCapacity)
         {
@@ -128,7 +31,8 @@ internal static class IntegralRingOperationsLE
                 parameterName);
         }
 
-        ResolveByteOrder(span.Format.ByteOrder);
+        // Reject undefined / inconsistent formats (including poisoned byte order).
+        span.Format.Validate();
 
         if (span.Length == 0 &&
             span.IntegralValueType == IntegralType.NONE)
@@ -136,7 +40,7 @@ internal static class IntegralRingOperationsLE
             return 0;
         }
 
-        int valueByteCount = span.IntegralValueType.Size();
+        int valueByteCount = span.Format.ValueSize;
         if (span.Capacity.ValueByteCount != valueByteCount ||
             span.Format.BlockCapacity <= 0 ||
             span.Length % valueByteCount != 0 ||
@@ -160,66 +64,386 @@ internal static class IntegralRingOperationsLE
         return (int)span.Length;
     }
 
-    private static unsafe int ReadValues(
+    /// <summary>
+    /// How many scalar values lie in complete blocks of <paramref name="span"/>
+    /// that also fit in <paramref name="availableBytes"/> of ring free/stored.
+    /// Trailing partial blocks are never counted.
+    /// </summary>
+    internal static long CountBlockCompleteValues(
+        in IntegralSpan span,
+        int availableBytes)
+    {
+        int blockCapacity = span.Capacity.BlockCapacity;
+        long blockByteCount = span.Capacity.BlockByteCount;
+        if (blockCapacity <= 0 ||
+            blockByteCount <= 0 ||
+            availableBytes <= 0 ||
+            span.Length == 0)
+        {
+            return 0;
+        }
+
+        long spanBlocks = span.BlockCount;
+        long availableBlocks = availableBytes / blockByteCount;
+        long blocks = Math.Min(spanBlocks, availableBlocks);
+        return blocks * blockCapacity;
+    }
+
+    /// <summary>
+    /// Byte length of all complete blocks in <paramref name="span"/> (excludes trailing values).
+    /// </summary>
+    internal static long BlockCompleteByteCount(in IntegralSpan span)
+    {
+        long blockByteCount = span.Capacity.BlockByteCount;
+        if (blockByteCount <= 0)
+        {
+            return 0;
+        }
+
+        return span.BlockCount * blockByteCount;
+    }
+
+    /// <summary>
+    /// Read <paramref name="valueCount"/> values from the ring into
+    /// <paramref name="destination"/>, reversing each lane relative to stream
+    /// order (foreign span endian).
+    /// </summary>
+    /// <returns>Scalar values transferred (same as <paramref name="valueCount"/> on success).</returns>
+    internal static long ReadEndianFlip(
         ref RingBufferStorage storage,
-        in IntegralSpan destination,
-        int valueCount)
+        byte* destination,
+        long valueCount,
+        int elementSize)
     {
         if (valueCount == 0)
         {
             return 0;
         }
 
-        int byteCount = checked(
-            valueCount * destination.Capacity.ValueByteCount);
-        int bytesRead = storage.Read(
-            destination.DataPtr,
-            byteCount);
-        Debug.Assert(bytesRead == byteCount);
-
-        if (ResolveByteOrder(destination.Format.ByteOrder) != ByteOrder.LittleEndian)
+        if (elementSize <= 1)
         {
-            IntegralSpan encodedValues = new(
-                destination.DataPtr,
-                0,
-                byteCount,
-                new IntegralFormat(
-                    destination.IntegralValueType,
-                    1,
-                    ByteOrder.LittleEndian));
-            IntegralSpan decodedValues = new(
-                destination.DataPtr,
-                0,
-                byteCount,
-                new IntegralFormat(
-                    destination.IntegralValueType,
-                    1,
-                    destination.Format.ByteOrder));
+            int byteCount = checked((int)(valueCount * elementSize));
+            int read = storage.Read(destination, byteCount);
+            Debug.Assert(read == byteCount);
+            return valueCount;
+        }
 
-            IntegralMemory.Move(
-                encodedValues,
-                decodedValues,
-                valueCount);
+        // Single value: reverse-read directly from the ring stream.
+        if (valueCount == 1)
+        {
+            switch (elementSize)
+            {
+                case 2:
+                    storage.ReadLE2(destination);
+                    break;
+                case 4:
+                    storage.ReadLE4(destination);
+                    break;
+                case 8:
+                    storage.ReadLE8(destination);
+                    break;
+                default:
+                    throw new NotSupportedException(
+                        $"Element size {elementSize} is not supported.");
+            }
+
+            return 1;
+        }
+
+        int byteCountMulti = checked((int)(valueCount * elementSize));
+        int bytesRead = storage.Read(destination, byteCountMulti);
+        Debug.Assert(bytesRead == byteCountMulti);
+        IntegralPrimitives.ReverseLanesInPlace(
+            destination,
+            valueCount,
+            elementSize);
+        return valueCount;
+    }
+
+    /// <summary>
+    /// Write <paramref name="valueCount"/> values from <paramref name="source"/>
+    /// into the ring, reversing each lane relative to stream order (foreign
+    /// span endian). Uses storage reverse-write helpers for the single-value path.
+    /// </summary>
+    /// <returns>Scalar values transferred (same as <paramref name="valueCount"/> on success).</returns>
+    internal static long WriteEndianFlip(
+        ref RingBufferStorage storage,
+        byte* source,
+        long valueCount,
+        int elementSize)
+    {
+        if (valueCount == 0)
+        {
+            return 0;
+        }
+
+        if (elementSize <= 1)
+        {
+            int byteCount = checked((int)(valueCount * elementSize));
+            int written = storage.Write(source, byteCount);
+            Debug.Assert(written == byteCount);
+            return valueCount;
+        }
+
+        // Single value: reverse-write directly into the ring stream.
+        if (valueCount == 1)
+        {
+            switch (elementSize)
+            {
+                case 2:
+                    storage.WriteLE2(source);
+                    break;
+                case 4:
+                    storage.WriteLE4(source);
+                    break;
+                case 8:
+                    storage.WriteLE8(source);
+                    break;
+                default:
+                    throw new NotSupportedException(
+                        $"Element size {elementSize} is not supported.");
+            }
+
+            return 1;
+        }
+
+        int scratchValueCount = Math.Max(1, ScratchByteCount / elementSize);
+        byte* scratch = stackalloc byte[scratchValueCount * elementSize];
+
+        long sourcePosition = 0;
+        while (sourcePosition < valueCount)
+        {
+            int chunkValueCount = (int)Math.Min(
+                scratchValueCount,
+                valueCount - sourcePosition);
+            byte* src = source + sourcePosition * elementSize;
+            IntegralPrimitives.ReverseCopyLanes(
+                src,
+                scratch,
+                chunkValueCount,
+                elementSize);
+
+            int chunkByteCount = checked((int)(
+                (long)chunkValueCount * elementSize));
+            int bytesWritten = storage.Write(scratch, chunkByteCount);
+            Debug.Assert(bytesWritten == chunkByteCount);
+            sourcePosition += chunkValueCount;
         }
 
         return valueCount;
     }
+}
 
-    private static unsafe int WriteValues(
+
+/// <summary>
+/// IntegralSpan transfer for little-endian ring stream order.
+/// Typed scalar/bulk R/W lives on the ring types.
+/// </summary>
+internal static class IntegralRingOperationsLE
+{
+    private const ByteOrder RingByteOrder = ByteOrder.LittleEndian;
+
+    /// <summary>
+    /// Trusted (matches <see cref="IIntegralRingBuffer.Read"/>): no span validation.
+    /// Block-complete values only.
+    /// </summary>
+    internal static unsafe int Read(
         ref RingBufferStorage storage,
-        in IntegralSpan source,
-        int valueCount)
+        in IntegralSpan destination)
+    {
+        if (!storage.IsOpen || destination.Length == 0)
+        {
+            return 0;
+        }
+
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            destination,
+            storage.StoredBytes);
+
+        return checked((int)ReadValues(
+            ref storage,
+            destination,
+            valueCount));
+    }
+
+    /// <summary>
+    /// Checked (matches <see cref="IIntegralRingBuffer.ReadChecked"/>): validates, then <see cref="Read"/>.
+    /// </summary>
+    internal static unsafe int ReadChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan destination)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            destination,
+            nameof(destination));
+        return Read(ref storage, destination);
+    }
+
+    /// <summary>
+    /// Trusted try-read: all complete blocks of the span, or false.
+    /// </summary>
+    internal static unsafe bool TryRead(
+        ref RingBufferStorage storage,
+        in IntegralSpan destination)
+    {
+        long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(destination);
+        if (!storage.IsOpen ||
+            storage.StoredBytes < requiredByteCount)
+        {
+            return false;
+        }
+
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            destination,
+            storage.StoredBytes);
+        long readCount = ReadValues(
+            ref storage,
+            destination,
+            valueCount);
+        Debug.Assert(readCount == valueCount);
+        return true;
+    }
+
+    internal static unsafe bool TryReadChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan destination)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            destination,
+            nameof(destination));
+        return TryRead(ref storage, destination);
+    }
+
+    /// <summary>
+    /// Trusted write: partial, block-complete only.
+    /// </summary>
+    internal static unsafe int Write(
+        ref RingBufferStorage storage,
+        in IntegralSpan source)
+    {
+        if (!storage.IsOpen || source.Length == 0)
+        {
+            return 0;
+        }
+
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            source,
+            storage.FreeBytes);
+
+        return checked((int)WriteValues(
+            ref storage,
+            source,
+            valueCount));
+    }
+
+    internal static unsafe int WriteChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan source)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            source,
+            nameof(source));
+        return Write(ref storage, source);
+    }
+
+    /// <summary>
+    /// Trusted try-write: all complete blocks of the span, or false.
+    /// </summary>
+    internal static unsafe bool TryWrite(
+        ref RingBufferStorage storage,
+        in IntegralSpan source)
+    {
+        long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(source);
+        if (!storage.IsOpen ||
+            storage.FreeBytes < requiredByteCount)
+        {
+            return false;
+        }
+
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            source,
+            storage.FreeBytes);
+        long writtenCount = WriteValues(
+            ref storage,
+            source,
+            valueCount);
+        Debug.Assert(writtenCount == valueCount);
+        return true;
+    }
+
+    internal static unsafe bool TryWriteChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan source)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            source,
+            nameof(source));
+        return TryWrite(ref storage, source);
+    }
+
+    /// <summary>Delegates to shared validation (waitable rings call this).</summary>
+    internal static unsafe int ValidateSpan(
+        ref RingBufferStorage storage,
+        in IntegralSpan span,
+        string parameterName)
+    {
+        return IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            span,
+            parameterName);
+    }
+
+    private static unsafe long ReadValues(
+        ref RingBufferStorage storage,
+        in IntegralSpan destination,
+        long valueCount)
     {
         if (valueCount == 0)
         {
             return 0;
         }
 
-        int byteCount = checked(
-            valueCount * source.Capacity.ValueByteCount);
-
-        if (ResolveByteOrder(source.Format.ByteOrder) == ByteOrder.LittleEndian)
+        int elementSize = destination.Capacity.ValueByteCount;
+        if (destination.Format.ByteOrder.Resolve() ==
+            RingByteOrder)
         {
+            int byteCount = checked((int)(
+                valueCount * elementSize));
+            int bytesRead = storage.Read(
+                destination.DataPtr,
+                byteCount);
+            Debug.Assert(bytesRead == byteCount);
+            return valueCount;
+        }
+
+        // Destination is not LE wire — reverse each lane out of LE ring stream.
+        return IntegralRingSpanOps.ReadEndianFlip(
+            ref storage,
+            destination.DataPtr,
+            valueCount,
+            elementSize);
+    }
+
+    private static unsafe long WriteValues(
+        ref RingBufferStorage storage,
+        in IntegralSpan source,
+        long valueCount)
+    {
+        if (valueCount == 0)
+        {
+            return 0;
+        }
+
+        int elementSize = source.Capacity.ValueByteCount;
+        if (source.Format.ByteOrder.Resolve() ==
+            RingByteOrder)
+        {
+            int byteCount = checked((int)(
+                valueCount * elementSize));
             int bytesWritten = storage.Write(
                 source.DataPtr,
                 byteCount);
@@ -228,141 +452,78 @@ internal static class IntegralRingOperationsLE
         }
 
         // Source is not LE wire — reverse each lane into LE ring stream order.
-        return WriteEndianFlip(
+        return IntegralRingSpanOps.WriteEndianFlip(
             ref storage,
             source.DataPtr,
             valueCount,
-            source.Capacity.ValueByteCount);
-    }
-
-    /// <summary>
-    /// Wire endian flip only: reverse lanes into ring stream.
-    /// Storage WriteLE* reverses external bytes into the stream (both LE/BE rings).
-    /// </summary>
-    private static unsafe int WriteEndianFlip(
-        ref RingBufferStorage storage,
-        byte* source,
-        int valueCount,
-        int elementSize)
-    {
-        if (elementSize <= 1)
-        {
-            int byteCount = checked(valueCount * elementSize);
-            int written = storage.Write(source, byteCount);
-            Debug.Assert(written == byteCount);
-            return valueCount;
-        }
-
-        // Single value: reverse-write directly into the ring.
-        if (valueCount == 1)
-        {
-            switch (elementSize)
-            {
-                case 2:
-                    storage.WriteLE2(source);
-                    break;
-                case 4:
-                    storage.WriteLE4(source);
-                    break;
-                case 8:
-                    storage.WriteLE8(source);
-                    break;
-                default:
-                    throw new NotSupportedException(
-                        $"Element size {elementSize} is not supported.");
-            }
-
-            return 1;
-        }
-
-        int scratchValueCount = Math.Max(1, ScratchByteCount / elementSize);
-        byte* scratch = stackalloc byte[scratchValueCount * elementSize];
-
-        int sourcePosition = 0;
-        while (sourcePosition < valueCount)
-        {
-            int chunkValueCount = Math.Min(
-                scratchValueCount,
-                valueCount - sourcePosition);
-            byte* src = source + sourcePosition * elementSize;
-            IntegralWire.ReverseCopyLanes(
-                src,
-                scratch,
-                chunkValueCount,
-                elementSize);
-
-            int chunkByteCount = checked(chunkValueCount * elementSize);
-            int bytesWritten = storage.Write(scratch, chunkByteCount);
-            Debug.Assert(bytesWritten == chunkByteCount);
-            sourcePosition += chunkValueCount;
-        }
-
-        return valueCount;
-    }
-
-    private static ByteOrder ResolveByteOrder(ByteOrder byteOrder)
-    {
-        return byteOrder switch
-        {
-            ByteOrder.Native => BitConverter.IsLittleEndian
-                ? ByteOrder.LittleEndian
-                : ByteOrder.BigEndian,
-            ByteOrder.LittleEndian => ByteOrder.LittleEndian,
-            ByteOrder.BigEndian => ByteOrder.BigEndian,
-            _ => throw new ArgumentOutOfRangeException(nameof(byteOrder)),
-        };
+            elementSize);
     }
 }
 
 
+/// <summary>
+/// IntegralSpan transfer for big-endian ring stream order.
+/// Typed scalar/bulk R/W lives on the ring types.
+/// </summary>
 internal static class IntegralRingOperationsBE
 {
-    private const int ScratchByteCount = 512;
+    private const ByteOrder RingByteOrder = ByteOrder.BigEndian;
 
+    /// <summary>
+    /// Trusted (matches <see cref="IIntegralRingBuffer.Read"/>): no span validation.
+    /// Block-complete values only.
+    /// </summary>
     internal static unsafe int Read(
         ref RingBufferStorage storage,
         in IntegralSpan destination)
     {
-        int requestedByteCount = ValidateSpan(
-            ref storage,
-            destination,
-            nameof(destination));
-
-        if (!storage.IsOpen || requestedByteCount == 0)
+        if (!storage.IsOpen || destination.Length == 0)
         {
             return 0;
         }
 
-        int valueByteCount = destination.Capacity.ValueByteCount;
-        int valueCount = Math.Min(
-            requestedByteCount / valueByteCount,
-            storage.StoredBytes / valueByteCount);
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            destination,
+            storage.StoredBytes);
 
-        return ReadValues(
+        return checked((int)ReadValues(
             ref storage,
             destination,
-            valueCount);
+            valueCount));
     }
 
+    /// <summary>
+    /// Checked (matches <see cref="IIntegralRingBuffer.ReadChecked"/>): validates, then <see cref="Read"/>.
+    /// </summary>
+    internal static unsafe int ReadChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan destination)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            destination,
+            nameof(destination));
+        return Read(ref storage, destination);
+    }
+
+    /// <summary>
+    /// Trusted try-read: all complete blocks of the span, or false.
+    /// </summary>
     internal static unsafe bool TryRead(
         ref RingBufferStorage storage,
         in IntegralSpan destination)
     {
-        int requiredByteCount = ValidateSpan(
-            ref storage,
-            destination,
-            nameof(destination));
-
+        long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(destination);
         if (!storage.IsOpen ||
             storage.StoredBytes < requiredByteCount)
         {
             return false;
         }
 
-        int valueCount = requiredByteCount == 0
-            ? 0
-            : requiredByteCount / destination.Capacity.ValueByteCount;
-        int readCount = ReadValues(
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            destination,
+            storage.StoredBytes);
+        long readCount = ReadValues(
             ref storage,
             destination,
             valueCount);
@@ -370,50 +531,68 @@ internal static class IntegralRingOperationsBE
         return true;
     }
 
+    internal static unsafe bool TryReadChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan destination)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            destination,
+            nameof(destination));
+        return TryRead(ref storage, destination);
+    }
+
+    /// <summary>
+    /// Trusted write: partial, block-complete only.
+    /// </summary>
     internal static unsafe int Write(
         ref RingBufferStorage storage,
         in IntegralSpan source)
     {
-        int requestedByteCount = ValidateSpan(
-            ref storage,
-            source,
-            nameof(source));
-
-        if (!storage.IsOpen || requestedByteCount == 0)
+        if (!storage.IsOpen || source.Length == 0)
         {
             return 0;
         }
 
-        int valueByteCount = source.Capacity.ValueByteCount;
-        int valueCount = Math.Min(
-            requestedByteCount / valueByteCount,
-            storage.FreeBytes / valueByteCount);
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            source,
+            storage.FreeBytes);
 
-        return WriteValues(
+        return checked((int)WriteValues(
             ref storage,
             source,
-            valueCount);
+            valueCount));
     }
 
+    internal static unsafe int WriteChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan source)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            source,
+            nameof(source));
+        return Write(ref storage, source);
+    }
+
+    /// <summary>
+    /// Trusted try-write: all complete blocks of the span, or false.
+    /// </summary>
     internal static unsafe bool TryWrite(
         ref RingBufferStorage storage,
         in IntegralSpan source)
     {
-        int requiredByteCount = ValidateSpan(
-            ref storage,
-            source,
-            nameof(source));
-
+        long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(source);
         if (!storage.IsOpen ||
             storage.FreeBytes < requiredByteCount)
         {
             return false;
         }
 
-        int valueCount = requiredByteCount == 0
-            ? 0
-            : requiredByteCount / source.Capacity.ValueByteCount;
-        int writtenCount = WriteValues(
+        long valueCount = IntegralRingSpanOps.CountBlockCompleteValues(
+            source,
+            storage.FreeBytes);
+        long writtenCount = WriteValues(
             ref storage,
             source,
             valueCount);
@@ -421,112 +600,76 @@ internal static class IntegralRingOperationsBE
         return true;
     }
 
+    internal static unsafe bool TryWriteChecked(
+        ref RingBufferStorage storage,
+        in IntegralSpan source)
+    {
+        _ = IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            source,
+            nameof(source));
+        return TryWrite(ref storage, source);
+    }
+
+    /// <summary>Delegates to shared validation (waitable rings call this).</summary>
     internal static unsafe int ValidateSpan(
         ref RingBufferStorage storage,
         in IntegralSpan span,
         string parameterName)
     {
-        if (!span.Capacity.IsValid() ||
-            span.Capacity.ByteCount != span.Length ||
-            span.Capacity.BlockCapacity != span.Format.BlockCapacity)
-        {
-            throw new ArgumentException(
-                "The integral span has inconsistent capacity metadata.",
-                parameterName);
-        }
-
-        ResolveByteOrder(span.Format.ByteOrder);
-
-        if (span.Length == 0 &&
-            span.IntegralValueType == IntegralType.NONE)
-        {
-            return 0;
-        }
-
-        int valueByteCount = span.IntegralValueType.Size();
-        if (span.Capacity.ValueByteCount != valueByteCount ||
-            span.Format.BlockCapacity <= 0 ||
-            span.Length % valueByteCount != 0 ||
-            span.Offset % valueByteCount != 0 ||
-            (span.Length > 0 && span.DataPtr is null))
-        {
-            throw new ArgumentException(
-                "The integral span is not a complete scalar-value descriptor.",
-                parameterName);
-        }
-
-        if (span.Length > int.MaxValue ||
-            (storage.IsOpen && span.Length > storage.ByteCapacity))
-        {
-            throw new ArgumentOutOfRangeException(
-                parameterName,
-                span.Length,
-                "The requested byte size exceeds the ring capacity.");
-        }
-
-        return (int)span.Length;
+        return IntegralRingSpanOps.ValidateSpan(
+            ref storage,
+            span,
+            parameterName);
     }
 
-    private static unsafe int ReadValues(
+    private static unsafe long ReadValues(
         ref RingBufferStorage storage,
         in IntegralSpan destination,
-        int valueCount)
+        long valueCount)
     {
         if (valueCount == 0)
         {
             return 0;
         }
 
-        int byteCount = checked(
-            valueCount * destination.Capacity.ValueByteCount);
-        int bytesRead = storage.Read(
-            destination.DataPtr,
-            byteCount);
-        Debug.Assert(bytesRead == byteCount);
-
-        if (ResolveByteOrder(destination.Format.ByteOrder) != ByteOrder.BigEndian)
+        int elementSize = destination.Capacity.ValueByteCount;
+        if (destination.Format.ByteOrder.Resolve() ==
+            RingByteOrder)
         {
-            IntegralSpan encodedValues = new(
+            int byteCount = checked((int)(
+                valueCount * elementSize));
+            int bytesRead = storage.Read(
                 destination.DataPtr,
-                0,
-                byteCount,
-                new IntegralFormat(
-                    destination.IntegralValueType,
-                    1,
-                    ByteOrder.BigEndian));
-            IntegralSpan decodedValues = new(
-                destination.DataPtr,
-                0,
-                byteCount,
-                new IntegralFormat(
-                    destination.IntegralValueType,
-                    1,
-                    destination.Format.ByteOrder));
-
-            IntegralMemory.Move(
-                encodedValues,
-                decodedValues,
-                valueCount);
+                byteCount);
+            Debug.Assert(bytesRead == byteCount);
+            return valueCount;
         }
 
-        return valueCount;
+        // Destination is not BE wire — reverse each lane out of BE ring stream.
+        return IntegralRingSpanOps.ReadEndianFlip(
+            ref storage,
+            destination.DataPtr,
+            valueCount,
+            elementSize);
     }
 
-    private static unsafe int WriteValues(
+    private static unsafe long WriteValues(
         ref RingBufferStorage storage,
         in IntegralSpan source,
-        int valueCount)
+        long valueCount)
     {
         if (valueCount == 0)
         {
             return 0;
         }
 
-        int byteCount = checked(
-            valueCount * source.Capacity.ValueByteCount);
-
-        if (ResolveByteOrder(source.Format.ByteOrder) == ByteOrder.BigEndian)
+        int elementSize = source.Capacity.ValueByteCount;
+        if (source.Format.ByteOrder.Resolve() ==
+            RingByteOrder)
         {
+            int byteCount = checked((int)(
+                valueCount * elementSize));
             int bytesWritten = storage.Write(
                 source.DataPtr,
                 byteCount);
@@ -535,86 +678,10 @@ internal static class IntegralRingOperationsBE
         }
 
         // Source is not BE wire — reverse each lane into BE ring stream order.
-        return WriteEndianFlip(
+        return IntegralRingSpanOps.WriteEndianFlip(
             ref storage,
             source.DataPtr,
             valueCount,
-            source.Capacity.ValueByteCount);
-    }
-
-    /// <summary>
-    /// Wire endian flip only: reverse lanes into ring stream via WriteLE* / scratch.
-    /// </summary>
-    private static unsafe int WriteEndianFlip(
-        ref RingBufferStorage storage,
-        byte* source,
-        int valueCount,
-        int elementSize)
-    {
-        if (elementSize <= 1)
-        {
-            int byteCount = checked(valueCount * elementSize);
-            int written = storage.Write(source, byteCount);
-            Debug.Assert(written == byteCount);
-            return valueCount;
-        }
-
-        if (valueCount == 1)
-        {
-            switch (elementSize)
-            {
-                case 2:
-                    storage.WriteLE2(source);
-                    break;
-                case 4:
-                    storage.WriteLE4(source);
-                    break;
-                case 8:
-                    storage.WriteLE8(source);
-                    break;
-                default:
-                    throw new NotSupportedException(
-                        $"Element size {elementSize} is not supported.");
-            }
-
-            return 1;
-        }
-
-        int scratchValueCount = Math.Max(1, ScratchByteCount / elementSize);
-        byte* scratch = stackalloc byte[scratchValueCount * elementSize];
-
-        int sourcePosition = 0;
-        while (sourcePosition < valueCount)
-        {
-            int chunkValueCount = Math.Min(
-                scratchValueCount,
-                valueCount - sourcePosition);
-            byte* src = source + sourcePosition * elementSize;
-            IntegralWire.ReverseCopyLanes(
-                src,
-                scratch,
-                chunkValueCount,
-                elementSize);
-
-            int chunkByteCount = checked(chunkValueCount * elementSize);
-            int bytesWritten = storage.Write(scratch, chunkByteCount);
-            Debug.Assert(bytesWritten == chunkByteCount);
-            sourcePosition += chunkValueCount;
-        }
-
-        return valueCount;
-    }
-
-    private static ByteOrder ResolveByteOrder(ByteOrder byteOrder)
-    {
-        return byteOrder switch
-        {
-            ByteOrder.Native => BitConverter.IsLittleEndian
-                ? ByteOrder.LittleEndian
-                : ByteOrder.BigEndian,
-            ByteOrder.LittleEndian => ByteOrder.LittleEndian,
-            ByteOrder.BigEndian => ByteOrder.BigEndian,
-            _ => throw new ArgumentOutOfRangeException(nameof(byteOrder)),
-        };
+            elementSize);
     }
 }

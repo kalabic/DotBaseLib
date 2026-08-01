@@ -156,7 +156,7 @@ public unsafe class IntegralMemoryStridedTests
                 IntegralType.UInt8);
 
             Assert.Throws<ArgumentException>(
-                () => IntegralMemory.CopyStrided(
+                () => IntegralMemory.CopyStridedChecked(
                     span,
                     0,
                     2,
@@ -190,7 +190,7 @@ public unsafe class IntegralMemoryStridedTests
                 IntegralType.Int32);
 
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => IntegralMemory.CopyStrided(
+                () => IntegralMemory.CopyStridedChecked(
                     source,
                     0,
                     0,
@@ -199,7 +199,7 @@ public unsafe class IntegralMemoryStridedTests
                     1,
                     1));
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => IntegralMemory.CopyStrided(
+                () => IntegralMemory.CopyStridedChecked(
                     source,
                     0,
                     1,
@@ -208,7 +208,7 @@ public unsafe class IntegralMemoryStridedTests
                     1,
                     -1));
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => IntegralMemory.CopyStrided(
+                () => IntegralMemory.CopyStridedChecked(
                     source,
                     1,
                     2,
@@ -217,12 +217,13 @@ public unsafe class IntegralMemoryStridedTests
                     1,
                     3));
 
-            IntegralMemory.CopyStrided(
+            // Zero-count is allowed at the end with any stride (including 0).
+            IntegralMemory.CopyStridedChecked(
                 source,
-                source.IntegralLength,
+                source.ValueCount,
                 0,
                 destination,
-                destination.IntegralLength,
+                destination.ValueCount,
                 0,
                 0);
         }
@@ -241,7 +242,7 @@ public unsafe class IntegralMemoryStridedTests
             IntegralType.UInt8);
 
         Assert.Throws<OverflowException>(
-            () => IntegralMemory.CopyStrided(
+            () => IntegralMemory.CopyStridedChecked(
                 source,
                 1,
                 long.MaxValue,

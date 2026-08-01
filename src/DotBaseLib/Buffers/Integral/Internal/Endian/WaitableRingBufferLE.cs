@@ -1,0 +1,726 @@
+using DotBase.Integral;
+using DotBase.Integral.Internal;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+
+namespace DotBase.Buffers.Integral.Internal.Endian;
+
+
+internal sealed class WaitableRingBufferLE 
+    : WaitableRingBuffer
+{
+    private const int ScratchByteCount = 512;
+
+    internal WaitableRingBufferLE(int capacity)
+        : base(capacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(capacity);
+    }
+
+    public override ByteOrder ByteOrder => ByteOrder.LittleEndian;
+
+    public override void AdvanceBy<T>(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        lock (_lock)
+        {
+            _storage.Advance(
+                checked((int)(
+                    (long)count * Unsafe.SizeOf<T>())));
+        }
+    }
+
+    public override int Read(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(destination);
+            if (!_storage.IsOpen)
+            {
+                return 0;
+            }
+
+            WaitForBytes(requiredByteCount, nameof(destination));
+
+            return _storage.IsOpen
+                ? IntegralRingOperationsLE.Read(ref _storage, destination)
+                : 0;
+        }
+    }
+
+    public override bool TryRead(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            return IntegralRingOperationsLE.TryRead(ref _storage, destination);
+        }
+    }
+
+    public override int Write(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            int count = IntegralRingOperationsLE.Write(ref _storage, source);
+            if (count > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return count;
+        }
+    }
+
+    public override bool TryWrite(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            bool completed = IntegralRingOperationsLE.TryWrite(ref _storage, source);
+            if (completed && source.ValueCount > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return completed;
+        }
+    }
+
+    public override int ReadChecked(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            _ = IntegralRingOperationsLE.ValidateSpan(
+                ref _storage,
+                destination,
+                nameof(destination));
+
+            long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(destination);
+            if (!_storage.IsOpen)
+            {
+                return 0;
+            }
+
+            WaitForBytes(requiredByteCount, nameof(destination));
+
+            return _storage.IsOpen
+                ? IntegralRingOperationsLE.Read(ref _storage, destination)
+                : 0;
+        }
+    }
+
+    public override bool TryReadChecked(in IntegralSpan destination)
+    {
+        lock (_lock)
+        {
+            return IntegralRingOperationsLE.TryReadChecked(ref _storage, destination);
+        }
+    }
+
+    public override int WriteChecked(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            int count = IntegralRingOperationsLE.WriteChecked(ref _storage, source);
+            if (count > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return count;
+        }
+    }
+
+    public override bool TryWriteChecked(in IntegralSpan source)
+    {
+        lock (_lock)
+        {
+            bool completed = IntegralRingOperationsLE.TryWriteChecked(ref _storage, source);
+            if (completed && source.ValueCount > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return completed;
+        }
+    }
+
+    public override int Read(byte[] data, int offset, int count)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        return ReadBytes(data.AsSpan(offset, count));
+    }
+
+    public override unsafe int Read(byte* data, int offset, int count)
+    {
+        IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
+        return ReadBytes(data + offset, count);
+    }
+
+    public override int Write(byte[] data, int offset, int count)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        return WriteBytes(data.AsSpan(offset, count));
+    }
+
+    public override unsafe int Write(byte* data, int offset, int count)
+    {
+        IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
+        return WriteBytes(data + offset, count);
+    }
+
+    public override unsafe T Read<T>()
+    {
+        int n = Unsafe.SizeOf<T>();
+
+        lock (_lock)
+        {
+            WaitForBytes(n, nameof(T));
+
+            if (_storage.IsOpen && TryReadScalar(out T value))
+            {
+                return value;
+            }
+        }
+
+        throw new InvalidOperationException(
+            "The ring was closed before a complete value became available.");
+    }
+
+    public override unsafe bool TryRead<T>(out T value)
+    {
+        lock (_lock)
+        {
+            return TryReadScalar(out value);
+        }
+    }
+
+    public override unsafe void Write<T>(T value)
+    {
+        lock (_lock)
+        {
+            if (!TryWriteScalar(value))
+            {
+                throw new InvalidOperationException(
+                    "The ring does not have enough free capacity for the requested value.");
+            }
+
+            Monitor.PulseAll(_lock);
+        }
+    }
+
+    public override unsafe bool TryWrite<T>(T value)
+    {
+        lock (_lock)
+        {
+            bool completed = TryWriteScalar(value);
+            if (completed)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return completed;
+        }
+    }
+
+    public override int Read<T>(T[] destination, int offset, int count)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        return ReadValues(destination.AsSpan(offset, count));
+    }
+
+    public override unsafe int Read<T>(T* destination, int offset, int count)
+    {
+        IntegralBufferGuards.ValidatePointer(
+            destination,
+            offset,
+            count,
+            nameof(destination));
+
+        return ReadValues(new Span<T>(destination + offset, count));
+    }
+
+    public override int Write<T>(T[] source, int offset, int count)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return Write((ReadOnlySpan<T>)source.AsSpan(offset, count));
+    }
+
+    public override unsafe int Write<T>(T* source, int offset, int count)
+    {
+        IntegralBufferGuards.ValidatePointer(source, offset, count, nameof(source));
+        return Write(new ReadOnlySpan<T>(source + offset, count));
+    }
+
+    public override bool TryRead<T>(T[] destination, int offset, int count)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        return TryRead(destination.AsSpan(offset, count));
+    }
+
+    public override unsafe bool TryRead<T>(T* destination, int offset, int count)
+    {
+        IntegralBufferGuards.ValidatePointer(
+            destination,
+            offset,
+            count,
+            nameof(destination));
+
+        lock (_lock)
+        {
+            return TryReadCore(destination + offset, count);
+        }
+    }
+
+    public override unsafe bool TryRead<T>(Span<T> destination)
+    {
+        if (destination.IsEmpty)
+        {
+            lock (_lock)
+            {
+                return _storage.IsOpen;
+            }
+        }
+
+        fixed (T* dst = destination)
+        {
+            lock (_lock)
+            {
+                return TryReadCore(dst, destination.Length);
+            }
+        }
+    }
+
+    public override bool TryWrite<T>(T[] source, int offset, int count)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return TryWrite((ReadOnlySpan<T>)source.AsSpan(offset, count));
+    }
+
+    public override unsafe bool TryWrite<T>(T* source, int offset, int count)
+    {
+        IntegralBufferGuards.ValidatePointer(source, offset, count, nameof(source));
+
+        lock (_lock)
+        {
+            bool completed = TryWriteCore(source + offset, count);
+            if (completed && count > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return completed;
+        }
+    }
+
+    public override unsafe bool TryWrite<T>(ReadOnlySpan<T> source)
+    {
+        if (source.IsEmpty)
+        {
+            lock (_lock)
+            {
+                return _storage.IsOpen;
+            }
+        }
+
+        fixed (T* src = source)
+        {
+            lock (_lock)
+            {
+                bool completed = TryWriteCore(src, source.Length);
+                if (completed)
+                {
+                    Monitor.PulseAll(_lock);
+                }
+
+                return completed;
+            }
+        }
+    }
+
+    public override int Read<T>(Span<T> destination)
+    {
+        return ReadValues(destination);
+    }
+
+    public override unsafe int Write<T>(ReadOnlySpan<T> source)
+    {
+        if (source.IsEmpty)
+        {
+            return 0;
+        }
+
+        fixed (T* src = source)
+        {
+            lock (_lock)
+            {
+                int count = WriteCore(src, source.Length);
+                if (count > 0)
+                {
+                    Monitor.PulseAll(_lock);
+                }
+
+                return count;
+            }
+        }
+    }
+
+    public override void Advance(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        lock (_lock)
+        {
+            _storage.Advance(count);
+        }
+    }
+
+    public override void ClearBuffer()
+    {
+        lock (_lock)
+        {
+            _storage.Clear();
+        }
+    }
+
+    public override void Close()
+    {
+        lock (_lock)
+        {
+            _storage.Close();
+            Monitor.PulseAll(_lock);
+        }
+    }
+
+    private int ReadBytes(Span<byte> destination)
+    {
+        lock (_lock)
+        {
+            WaitForBytes(destination.Length, nameof(destination));
+            if (!_storage.IsOpen)
+            {
+                return 0;
+            }
+
+            int n = Math.Min(destination.Length, _storage.StoredBytes);
+            return n == 0 ? 0 : _storage.Read(destination[..n]);
+        }
+    }
+
+    private int WriteBytes(ReadOnlySpan<byte> source)
+    {
+        lock (_lock)
+        {
+            int n = Math.Min(source.Length, _storage.FreeBytes);
+            if (n == 0)
+            {
+                return 0;
+            }
+
+            int count = _storage.Write(source[..n]);
+            if (count > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return count;
+        }
+    }
+
+    private unsafe int ReadBytes(byte* destination, int byteCount)
+    {
+        lock (_lock)
+        {
+            WaitForBytes(byteCount, nameof(destination));
+            if (!_storage.IsOpen)
+            {
+                return 0;
+            }
+
+            int n = Math.Min(byteCount, _storage.StoredBytes);
+            return n == 0 ? 0 : _storage.Read(destination, n);
+        }
+    }
+
+    private unsafe int WriteBytes(byte* source, int byteCount)
+    {
+        lock (_lock)
+        {
+            int n = Math.Min(byteCount, _storage.FreeBytes);
+            if (n == 0)
+            {
+                return 0;
+            }
+
+            int count = _storage.Write(source, n);
+            if (count > 0)
+            {
+                Monitor.PulseAll(_lock);
+            }
+
+            return count;
+        }
+    }
+
+    private unsafe int ReadValues<T>(Span<T> destination)
+        where T : unmanaged
+    {
+        long requiredBytes = (long)destination.Length * Unsafe.SizeOf<T>();
+
+        if (destination.IsEmpty)
+        {
+            lock (_lock)
+            {
+                WaitForBytes(0, nameof(destination));
+                return 0;
+            }
+        }
+
+        fixed (T* dst = destination)
+        {
+            lock (_lock)
+            {
+                WaitForBytes(requiredBytes, nameof(destination));
+                return _storage.IsOpen
+                    ? ReadCore(dst, destination.Length)
+                    : 0;
+            }
+        }
+    }
+
+    private void WaitForBytes(long requiredBytes, string parameterName)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            requiredBytes,
+            _storage.ByteCapacity,
+            parameterName);
+
+        while (_storage.IsOpen && _storage.StoredBytes < requiredBytes)
+        {
+            Monitor.Wait(_lock);
+        }
+    }
+
+    private unsafe bool TryReadScalar<T>(out T value)
+        where T : unmanaged
+    {
+        int n = Unsafe.SizeOf<T>();
+        if (!_storage.IsOpen || _storage.StoredBytes < n)
+        {
+            value = default;
+            return false;
+        }
+
+        T tmp = default;
+        byte* p = (byte*)&tmp;
+        if (BitConverter.IsLittleEndian)
+        {
+            switch (n)
+            {
+                case 1:
+                    _storage.Read(p, 1);
+                    break;
+                case 2:
+                    _storage.ReadBE2(p);
+                    break;
+                case 4:
+                    _storage.ReadBE4(p);
+                    break;
+                case 8:
+                    _storage.ReadBE8(p);
+                    break;
+                default:
+                    _storage.Read(p, n);
+                    break;
+            }
+        }
+        else
+        {
+            switch (n)
+            {
+                case 1:
+                    _storage.Read(p, 1);
+                    break;
+                case 2:
+                    _storage.ReadLE2(p);
+                    break;
+                case 4:
+                    _storage.ReadLE4(p);
+                    break;
+                case 8:
+                    _storage.ReadLE8(p);
+                    break;
+                default:
+                    _storage.Read(p, n);
+                    tmp = IntegralEndianness.ReverseValue(tmp);
+                    break;
+            }
+        }
+
+        value = tmp;
+        return true;
+    }
+
+    private unsafe bool TryWriteScalar<T>(T value)
+        where T : unmanaged
+    {
+        int n = Unsafe.SizeOf<T>();
+        if (!_storage.IsOpen || _storage.FreeBytes < n)
+        {
+            return false;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            switch (n)
+            {
+                case 1:
+                    _storage.Write((byte*)&value, 1);
+                    break;
+                case 2:
+                    _storage.WriteBE2((byte*)&value);
+                    break;
+                case 4:
+                    _storage.WriteBE4((byte*)&value);
+                    break;
+                case 8:
+                    _storage.WriteBE8((byte*)&value);
+                    break;
+                default:
+                    _storage.Write((byte*)&value, n);
+                    break;
+            }
+        }
+        else
+        {
+            switch (n)
+            {
+                case 1:
+                    _storage.Write((byte*)&value, 1);
+                    break;
+                case 2:
+                    _storage.WriteLE2((byte*)&value);
+                    break;
+                case 4:
+                    _storage.WriteLE4((byte*)&value);
+                    break;
+                case 8:
+                    _storage.WriteLE8((byte*)&value);
+                    break;
+                default:
+                    value = IntegralEndianness.ReverseValue(value);
+                    _storage.Write((byte*)&value, n);
+                    break;
+            }
+        }
+
+        return true;
+    }
+
+    private unsafe int ReadCore<T>(T* destination, int count)
+        where T : unmanaged
+    {
+        if (count <= 0)
+        {
+            return 0;
+        }
+
+        int n = Unsafe.SizeOf<T>();
+        int elementCount = Math.Min(count, _storage.StoredBytes / n);
+        if (elementCount == 0)
+        {
+            return 0;
+        }
+
+        int bytes = _storage.Read(
+            (byte*)destination,
+            checked((int)((long)elementCount * n)));
+        Debug.Assert(bytes == elementCount * n);
+
+        if (!BitConverter.IsLittleEndian && n > 1)
+        {
+            IntegralPrimitives.ReverseLanesInPlace((byte*)destination, elementCount, n);
+        }
+
+        return elementCount;
+    }
+
+    private unsafe bool TryReadCore<T>(T* destination, int count)
+        where T : unmanaged
+    {
+        long requiredBytes = (long)count * Unsafe.SizeOf<T>();
+        if (!_storage.IsOpen || _storage.StoredBytes < requiredBytes)
+        {
+            return false;
+        }
+
+        int elementCount = ReadCore(destination, count);
+        Debug.Assert(elementCount == count);
+        return true;
+    }
+
+    private unsafe int WriteCore<T>(T* source, int count)
+        where T : unmanaged
+    {
+        if (count <= 0)
+        {
+            return 0;
+        }
+
+        int n = Unsafe.SizeOf<T>();
+        int elementCount = Math.Min(count, _storage.FreeBytes / n);
+        if (elementCount == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian || n <= 1)
+        {
+            int bytes = _storage.Write(
+                (byte*)source,
+                checked((int)((long)elementCount * n)));
+            Debug.Assert(bytes == elementCount * n);
+            return elementCount;
+        }
+
+        WriteReversed(source, elementCount);
+        return elementCount;
+    }
+
+    private unsafe bool TryWriteCore<T>(T* source, int count)
+        where T : unmanaged
+    {
+        long requiredBytes = (long)count * Unsafe.SizeOf<T>();
+        if (!_storage.IsOpen || _storage.FreeBytes < requiredBytes)
+        {
+            return false;
+        }
+
+        int elementCount = WriteCore(source, count);
+        Debug.Assert(elementCount == count);
+        return true;
+    }
+
+    private unsafe void WriteReversed<T>(T* source, int count)
+        where T : unmanaged
+    {
+        int n = Unsafe.SizeOf<T>();
+        int scratchCount = Math.Max(1, ScratchByteCount / n);
+        byte* scratch = stackalloc byte[scratchCount * n];
+
+        int position = 0;
+        while (position < count)
+        {
+            int chunk = Math.Min(scratchCount, count - position);
+            IntegralPrimitives.ReverseCopyLanes(
+                (byte*)(source + position),
+                scratch,
+                chunk,
+                n);
+
+            int bytes = _storage.Write(
+                scratch,
+                checked((int)((long)chunk * n)));
+            Debug.Assert(bytes == chunk * n);
+            position += chunk;
+        }
+    }
+}
+

@@ -11,27 +11,6 @@ internal static unsafe class IntegralByteMemory
 {
     private const nuint StackAllocationByteCount = 512;
 
-    internal static void Copy(
-        byte* source,
-        byte* destination,
-        nuint byteCount)
-    {
-        if (byteCount == 0)
-        {
-            return;
-        }
-
-        Debug.Assert(source is not null);
-        Debug.Assert(destination is not null);
-        Debug.Assert(!Overlaps(source, destination, byteCount));
-
-        Buffer.MemoryCopy(
-            source,
-            destination,
-            (ulong)byteCount,
-            (ulong)byteCount);
-    }
-
     internal static void Move(
         byte* source,
         byte* destination,

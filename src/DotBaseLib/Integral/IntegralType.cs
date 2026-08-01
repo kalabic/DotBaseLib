@@ -1,4 +1,4 @@
-﻿using DotBase.Tools;
+using DotBase.Tools;
 
 namespace DotBase.Integral;
 
@@ -20,9 +20,11 @@ public enum IntegralType
     Double,
 }
 
-internal static class IntegralTypeMethods
+/// <summary>Public helpers for <see cref="IntegralType"/> size, CLR mapping, and compatibility.</summary>
+public static class IntegralTypeExtensions
 {
-    internal static int Size(this IntegralType type)
+    /// <summary>Byte width of one scalar of this type; 0 for <see cref="IntegralType.NONE"/>.</summary>
+    public static int Size(this IntegralType type)
     {
         return type switch
         {
@@ -41,9 +43,17 @@ internal static class IntegralTypeMethods
         };
     }
 
+    /// <summary>
+    /// Default <see cref="IntegralType"/> for CLR type <typeparamref name="T"/>,
+    /// or <see cref="IntegralType.NONE"/> if unsupported. The receiver is unused
+    /// (call as <c>default(IntegralType).DefaultForType&lt;T&gt;()</c> or
+    /// <c>IntegralType.NONE.DefaultForType&lt;T&gt;()</c>).
+    /// </summary>
     public static IntegralType DefaultForType<T>(this IntegralType id)
         where T : unmanaged
     {
+        _ = id;
+
         if (GenericType<T>.IsByte)
         {
             return IntegralType.UInt8;
@@ -88,6 +98,10 @@ internal static class IntegralTypeMethods
         return IntegralType.NONE;
     }
 
+    /// <summary>
+    /// Whether a value of CLR type <typeparamref name="T"/> can hold this integral type
+    /// (same size and signedness family as used by span/pointer APIs).
+    /// </summary>
     public static bool IsCompatible<T>(this IntegralType id)
         where T : unmanaged
     {

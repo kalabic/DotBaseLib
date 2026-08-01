@@ -1,25 +1,27 @@
-﻿using DotBase.Cancellation;
+﻿using DotBase.Tools;
 
 namespace DotBase.Buffers;
 
 
 /// <summary>
 ///
-/// Concurrent producers are supported but overlapping Read calls from multiple consumers are not.
+/// One producer and one consumer may operate concurrently, but overlapping Write calls
+/// or overlapping Read calls are not supported.
 ///
 /// </summary>
 public class CircularBufferWaitable : CircularBufferUnlocked
 {
     private readonly object _lock = new object();
 
-    private readonly CancellableEventSlim _storedByteCountEvent;
-
-    private int _waitingStoredByteCount = 0;
+    private readonly SimpleWaitableValue<int> _storedByteCount = new();
 
     public CircularBufferWaitable(int size)
         : base(size)
     {
-        _storedByteCountEvent = new CancellableEventSlim();
+        if (!IsOpen)
+        {
+            _storedByteCount.Close();
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -27,7 +29,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
         if (disposing)
         {
             Close();
-            _storedByteCountEvent.Dispose();
+            _storedByteCount.Dispose();
         }
 
         base.Dispose(disposing);
@@ -39,7 +41,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
         lock (_lock)
         {
             base.Close();
-            _storedByteCountEvent.Cancel();
+            _storedByteCount.Close();
         }
     }
 
@@ -50,44 +52,61 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     public override int Write(byte[] data, int offset, int length)
     {
-        // An array Write wrapper that acquires _lock before calling base.Write(byte[], ...); let the pointer override perform signalling.
-        lock (_lock)
+        // Cannot force write if requested length is larger than allocated buffer size.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
+
+        while (true)
         {
-            return base.Write(data, offset, length);
+            lock (_lock)
+            {
+                if (FreeBytes >= length)
+                {
+                    unsafe { fixed (byte* dataPtr = data) {
+                            int bytesWritten = base.Write(dataPtr, offset, length);
+                            _storedByteCount.SetValue(StoredBytes);
+                            return bytesWritten;
+                    } }
+                }
+            }
+
+            if (!WaitForFreeSpace(length))
+            {
+                break;
+            }
         }
+
+        return 0;
     }
 
     public override unsafe int Write(byte* data, int offset, int length)
     {
-        int bytesWritten;
-        lock (_lock)
+        // Cannot force write if requested length is larger than allocated buffer size.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
+
+        while (true)
         {
-            bytesWritten = base.Write(data, offset, length);
-            if (!IsOpen || ((_waitingStoredByteCount > 0) && (StoredBytes >= _waitingStoredByteCount)))
+            lock (_lock)
             {
-                _storedByteCountEvent.Set();
+                if (FreeBytes >= length)
+                {
+                    int bytesWritten = base.Write(data, offset, length);
+                    _storedByteCount.SetValue(StoredBytes);
+                    return bytesWritten;
+                }
+            }
+
+            if (!WaitForFreeSpace(length))
+            {
+                break;
             }
         }
-        return bytesWritten;
+
+        return 0;
     }
 
-    private bool ResetStoredByteCountEvent(int length)
+    private bool WaitForFreeSpace(int length)
     {
-        lock (_lock)
-        {
-            if (!IsOpen || (StoredBytes >= length))
-            {
-                _storedByteCountEvent.Set();
-                _waitingStoredByteCount = 0;
-                return false;
-            }
-            else
-            {
-                _storedByteCountEvent.Reset();
-                _waitingStoredByteCount = length;
-                return true;
-            }
-        }
+        return _storedByteCount.WaitLowMarkValue(ByteCapacity - length);
     }
 
     //
@@ -96,16 +115,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     private bool WaitForStoredData(int length)
     {
-        if (ResetStoredByteCountEvent(length))
-        {
-            bool result = _storedByteCountEvent.Wait();
-            lock (_lock) { _waitingStoredByteCount = 0; }
-            if (!result)
-            {
-                return false;
-            }
-        }
-        return IsOpen;
+        return _storedByteCount.WaitHighMarkValue(length);
     }
 
     public override int Read(byte[] data, int offset, int length)
@@ -120,7 +130,9 @@ public class CircularBufferWaitable : CircularBufferUnlocked
                 if (StoredBytes >= length)
                 {
                     unsafe { fixed (byte* dataPtr = data) {
-                            return base.Read(dataPtr, offset, length);
+                            int bytesRead = base.Read(dataPtr, offset, length);
+                            _storedByteCount.SetValue(StoredBytes);
+                            return bytesRead;
                     } }
                 }
             }
@@ -145,7 +157,9 @@ public class CircularBufferWaitable : CircularBufferUnlocked
             {
                 if (StoredBytes >= length)
                 {
-                    return base.Read(data, offset, length);
+                    int bytesRead = base.Read(data, offset, length);
+                    _storedByteCount.SetValue(StoredBytes);
+                    return bytesRead;
                 }
             }
 
@@ -163,6 +177,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
         lock (_lock)
         {
             base.Advance(count);
+            _storedByteCount.SetValue(StoredBytes);
         }
     }
 
@@ -171,6 +186,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
         lock (_lock)
         {
             base.ClearBuffer();
+            _storedByteCount.SetValue(StoredBytes);
         }
     }
 }

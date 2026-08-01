@@ -1,6 +1,8 @@
-﻿using DotBase.Tools;
-using System.Diagnostics;
+﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using DotBase.Buffers;
+using DotBase.Tools;
 
 namespace DotBase.Integral;
 
@@ -28,13 +30,20 @@ public unsafe readonly struct IntegralPtr
         Fmt = IntegralFormat.NONE;
     }
 
+    /// <summary>
+    /// Does not validate <paramref name="fmt"/>; call <see cref="Validate"/> when needed.
+    /// </summary>
     public IntegralPtr(byte* ptr, IntegralFormat fmt)
     {
-        fmt.Validate();
-
         BytePtr = ptr;
         Fmt = fmt;
     }
+
+    /// <summary>Whether <see cref="Fmt"/> is a valid empty or non-empty format.</summary>
+    public bool IsValid() => Fmt.IsValid();
+
+    /// <summary>Validates <see cref="Fmt"/> only.</summary>
+    public void Validate() => Fmt.Validate();
 
     public T* GetAs<T>() where T : unmanaged
     {
@@ -45,6 +54,14 @@ public unsafe readonly struct IntegralPtr
         where T : unmanaged
     {
         return Fmt.IsCompatible<T>();
+    }
+
+    /// <summary>Pins <paramref name="array"/> until the returned <see cref="Fixed{T}"/> is disposed.</summary>
+    public static Fixed<T> Pin<T>(T[] array, IntegralType format = IntegralType.NONE)
+        where T : unmanaged
+    {
+        ArgumentNullException.ThrowIfNull(array);
+        return new Any<T>(array, format).MakeFixed();
     }
 
     public static implicit operator byte*(in IntegralPtr other) { return (byte*)other.BytePtr; }
@@ -87,6 +104,7 @@ public unsafe readonly struct IntegralPtr
 
         public Any(T[] other, IntegralType format = IntegralType.NONE)
         {
+            ArgumentNullException.ThrowIfNull(other);
             Arr = other;
             Ptr = default;
             Format = (!GenericType<T>.IsByte && format == IntegralType.NONE) ? IntegralType.NONE.DefaultForType<T>() : format;
@@ -117,6 +135,12 @@ public unsafe readonly struct IntegralPtr
 
         public readonly IntegralType Format;
 
+        /// <summary>
+        /// Number of <typeparamref name="T"/> values when pinned from an array; -1 when
+        /// created from a raw pointer (caller must pass count to <see cref="AsSpan(long, int, ByteOrder)"/>).
+        /// </summary>
+        public readonly long ValueCount;
+
         internal Fixed(Any<T> other)
         {
             if (other.Arr is not null)
@@ -124,13 +148,48 @@ public unsafe readonly struct IntegralPtr
                 Handle = GCHandle.Alloc(other.Arr, GCHandleType.Pinned);
                 Ptr = (T*)Handle.AddrOfPinnedObject();
                 Format = other.Format;
+                ValueCount = other.Arr.Length;
             }
             else
             {
                 Handle = default;
                 Ptr = other.Ptr;
                 Format = other.Format;
+                ValueCount = -1;
             }
+        }
+
+        /// <summary>
+        /// Full array view when this pin was created from a <typeparamref name="T"/>[].
+        /// </summary>
+        public IntegralSpan AsSpan(
+            int blockCapacity = 1,
+            ByteOrder byteOrder = ByteOrder.Native)
+        {
+            if (ValueCount < 0)
+            {
+                throw new InvalidOperationException(
+                    "Value count is unknown for pointer pins. " +
+                    "Call AsSpan(valueCount, blockCapacity, byteOrder) instead.");
+            }
+
+            return AsSpan(ValueCount, blockCapacity, byteOrder);
+        }
+
+        /// <summary>
+        /// View over <paramref name="valueCount"/> values starting at <see cref="Ptr"/>.
+        /// </summary>
+        public IntegralSpan AsSpan(
+            long valueCount,
+            int blockCapacity = 1,
+            ByteOrder byteOrder = ByteOrder.Native)
+        {
+            return IntegralSpan.FromValues(
+                Ptr,
+                valueCount,
+                blockCapacity,
+                byteOrder,
+                Format);
         }
 
         public void Dispose()

@@ -30,6 +30,8 @@ public class CancellableEventSlim : IDisposable
 
     public bool IsEventCancelled { get {  return _cancellationEvent != EVENT_NOT_CANCELLED; } }
 
+    public bool IsSet { get { return _event.IsSet; } }
+
     public bool IsWaitable { get { return (_cancellationEvent == EVENT_NOT_CANCELLED) && (_isDisposed == 0); } }
 
 

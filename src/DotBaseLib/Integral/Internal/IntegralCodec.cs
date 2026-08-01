@@ -8,14 +8,14 @@ namespace DotBase.Integral.Internal;
 
 /// <summary>
 /// LE-wire scalar codec. Aligned pointer path: same-endian is a single load/store;
-/// opposite endian size-switches into <see cref="IntegralWire"/> Swap*.
+/// opposite endian size-switches into <see cref="IntegralPrimitives"/> Swap*.
 /// <see cref="RequiresReversal"/> is also used by ring bulk paths.
 /// </summary>
 internal static class IntegralCodecLE<T>
     where T : unmanaged
 {
     internal static bool RequiresReversal =>
-        IntegralWire.NeedsSwapForLeWire(Unsafe.SizeOf<T>());
+        !BitConverter.IsLittleEndian && Unsafe.SizeOf<T>() > 1;
 
     internal static unsafe T Read(byte* source)
     {
@@ -29,13 +29,13 @@ internal static class IntegralCodecLE<T>
         switch (Unsafe.SizeOf<T>())
         {
             case 2:
-                IntegralWire.Swap2(hostPtr, source);
+                IntegralPrimitives.Swap2(hostPtr, source);
                 break;
             case 4:
-                IntegralWire.Swap4(hostPtr, source);
+                IntegralPrimitives.Swap4(hostPtr, source);
                 break;
             case 8:
-                IntegralWire.Swap8(hostPtr, source);
+                IntegralPrimitives.Swap8(hostPtr, source);
                 break;
             default:
                 throw new NotSupportedException(
@@ -57,13 +57,13 @@ internal static class IntegralCodecLE<T>
         switch (Unsafe.SizeOf<T>())
         {
             case 2:
-                IntegralWire.Swap2(destination, hostPtr);
+                IntegralPrimitives.Swap2(destination, hostPtr);
                 return;
             case 4:
-                IntegralWire.Swap4(destination, hostPtr);
+                IntegralPrimitives.Swap4(destination, hostPtr);
                 return;
             case 8:
-                IntegralWire.Swap8(destination, hostPtr);
+                IntegralPrimitives.Swap8(destination, hostPtr);
                 return;
             default:
                 throw new NotSupportedException(
@@ -105,7 +105,7 @@ internal static class IntegralCodecBE<T>
     where T : unmanaged
 {
     internal static bool RequiresReversal =>
-        IntegralWire.NeedsSwapForBeWire(Unsafe.SizeOf<T>());
+        BitConverter.IsLittleEndian && Unsafe.SizeOf<T>() > 1;
 
     internal static unsafe T Read(byte* source)
     {
@@ -119,13 +119,13 @@ internal static class IntegralCodecBE<T>
         switch (Unsafe.SizeOf<T>())
         {
             case 2:
-                IntegralWire.Swap2(hostPtr, source);
+                IntegralPrimitives.Swap2(hostPtr, source);
                 break;
             case 4:
-                IntegralWire.Swap4(hostPtr, source);
+                IntegralPrimitives.Swap4(hostPtr, source);
                 break;
             case 8:
-                IntegralWire.Swap8(hostPtr, source);
+                IntegralPrimitives.Swap8(hostPtr, source);
                 break;
             default:
                 throw new NotSupportedException(
@@ -147,13 +147,13 @@ internal static class IntegralCodecBE<T>
         switch (Unsafe.SizeOf<T>())
         {
             case 2:
-                IntegralWire.Swap2(destination, hostPtr);
+                IntegralPrimitives.Swap2(destination, hostPtr);
                 return;
             case 4:
-                IntegralWire.Swap4(destination, hostPtr);
+                IntegralPrimitives.Swap4(destination, hostPtr);
                 return;
             case 8:
-                IntegralWire.Swap8(destination, hostPtr);
+                IntegralPrimitives.Swap8(destination, hostPtr);
                 return;
             default:
                 throw new NotSupportedException(

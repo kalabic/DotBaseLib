@@ -65,7 +65,7 @@ namespace DotBase.Buffers
         public CircularBufferUnlocked(int size)
         {
             isOpen = (size > 0);
-            buffer = isOpen ? new byte[size] : Array.Empty<byte>();
+            buffer = isOpen ? GC.AllocateUninitializedArray<byte>(size, true) : Array.Empty<byte>();
         }
 
         protected override void Dispose(bool disposing)
