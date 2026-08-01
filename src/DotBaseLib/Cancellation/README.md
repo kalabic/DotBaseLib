@@ -2,6 +2,8 @@
 
 Cancellation-aware waits, console cancellation, and typed cancellation events.
 
-Main API: `CancellableEventSlim`, `ConsoleCancellationSource`, `CancellationEventProducer`, and `CancellationEventConsumer`.
+Main API: `CancellableEventSlim`, `ConsoleCancellationSource`,
+`CancellationEvent`, `CancellationEventProducer`, `CancellationEventConsumer`,
+and `CancellationSet`.
 
 [Namespace index](../../../README.md#namespaces)

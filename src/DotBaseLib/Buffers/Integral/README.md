@@ -11,7 +11,9 @@ Span transfers are **block-complete**: only whole blocks
 
 | Method | Policy |
 |--------|--------|
-| `Read` / `Write` | **Partial** — as many complete blocks as fit (stored / free). |
+| `Read` / `Write` on unlocked or locked buffers | **Partial** — as many complete blocks as fit (stored / free). |
+| `Read` / `ReadChecked` on a waitable buffer | **Blocking** — wait for all complete blocks requested by the destination, or return `0` if the ring closes. |
+| `Write` / `WriteChecked` on a waitable buffer | **Partial** — as many complete blocks as fit in the free space. |
 | `TryRead` / `TryWrite` | **Atomic** — all complete blocks of the span, or fail with no mutation. |
 | `*Checked` | Validate format/geometry first, then the matching trusted method. |
 
@@ -23,5 +25,10 @@ use `*Checked` when the span may be malformed or hostile.
 
 Generic scalar/bulk APIs (`T`, arrays, `Span<T>`) remain value-granular and are
 separate from this block-complete span contract.
+
+`IWaitableRingBuffer` changes non-`Try` reads only: scalar, generic bulk, byte,
+and `IntegralSpan` reads wait for the complete request. Its writes retain the
+partial policy above. This differs from `CircularBufferWaitable`, whose byte
+reads and writes both wait for the complete requested length.
 
 [Namespace index](../../../../README.md#namespaces)

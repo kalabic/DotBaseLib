@@ -9,7 +9,6 @@ A helper library with foundational components for .NET applications.
 | [`DotBase.AsyncEvent`](src/DotBaseLib/AsyncEvent/README.md) | Asynchronous event delegates and invocation helpers. |
 | [`DotBase.Buffers`](src/DotBaseLib/Buffers/README.md) | Byte-oriented circular and ring buffers. |
 | [`DotBase.Buffers.Integral`](src/DotBaseLib/Buffers/Integral/README.md) | Fixed-endian integral operations over byte ring buffers. |
-| [`DotBase.Buffers.Integral.Internal`](src/DotBaseLib/Buffers/Integral/Internal/README.md) | Internal storage, codecs, and implementations. |
 | [`DotBase.Cancellation`](src/DotBaseLib/Cancellation/README.md) | Cancellation-aware events and waits. |
 | [`DotBase.Core`](src/DotBaseLib/Core/README.md) | Disposal and finalization foundations. |
 | [`DotBase.Event`](src/DotBaseLib/Event/README.md) | Typed event producers, consumers, and containers. |
