@@ -1,6 +1,7 @@
+using DotBase.Integral.Conversion;
 using DotBase.Integral.Conversion.Numeric;
 
-namespace DotBase.Integral.Conversion;
+namespace DotBase.Integral;
 
 
 /// <summary>
@@ -15,6 +16,11 @@ namespace DotBase.Integral.Conversion;
 /// </summary>
 public readonly struct IntegralConversionHandle
 {
+    public static IntegralConversionHandle GetHandle(in IntegralFormat input, in IntegralFormat output)
+    {
+        return ConversionDelegateTable.Instance.GetConversionHandle(input, output);
+    }
+
     private readonly IntegralSpanConversionFunc? _func;
 
     private readonly NumericConverters? _context;

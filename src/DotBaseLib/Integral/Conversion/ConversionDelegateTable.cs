@@ -65,6 +65,11 @@ public sealed class ConversionDelegateTable
             output.IntegralValueType);
     }
 
+    private static int TableIndex(in IntegralFormat input, in IntegralFormat output)
+    {
+        return TableIndex(input.ByteOrder, input.ValueType, output.ByteOrder, output.ValueType);
+    }
+
     private static int TableIndex(
         ByteOrder inputByteOrder,
         IntegralType inputType,
@@ -140,8 +145,13 @@ public sealed class ConversionDelegateTable
     /// </summary>
     public IntegralConversionHandle GetConversionHandle(in IntegralSpan input, in IntegralSpan output)
     {
-        IntegralSpanConversionFunc? func = output.Format.Converter?.Func;
-        NumericConverters? numericConverter = output.Format.Converter?.Converters;
+        return GetConversionHandle(input.Format, output.Format);
+    }
+
+    public IntegralConversionHandle GetConversionHandle(in IntegralFormat input, in IntegralFormat output)
+    {
+        IntegralSpanConversionFunc? func = output.Converter?.Func;
+        NumericConverters? numericConverter = output.Converter?.Converters;
         if (func is not null)
         {
             if (numericConverter is null)
@@ -178,10 +188,24 @@ public sealed class ConversionDelegateTable
         return _customFuncTable[index];
     }
 
+    private IntegralSpanConversionFunc? GetCustomFunc(in IntegralFormat input, in IntegralFormat output)
+    {
+        int index = TableIndex(input, output);
+        Debug.Assert(index >= 0 && index < TableSize);
+        return _customFuncTable[index];
+    }
+
     /// <summary>
     /// Builds the table index from the given spans and returns the default-policy conversion function.
     /// </summary>
     private IntegralSpanConversionFunc? GetDefaultFunc(in IntegralSpan input, in IntegralSpan output)
+    {
+        int index = TableIndex(input, output);
+        Debug.Assert(index >= 0 && index < TableSize);
+        return _defaultFuncTable[index];
+    }
+
+    private IntegralSpanConversionFunc? GetDefaultFunc(in IntegralFormat input, in IntegralFormat output)
     {
         int index = TableIndex(input, output);
         Debug.Assert(index >= 0 && index < TableSize);
