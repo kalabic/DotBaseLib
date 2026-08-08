@@ -5,7 +5,7 @@ namespace DotBase.Integral;
 
 public enum IntegralType
 {
-    NONE = 0,
+    None = 0,
 
     UInt8,
     Int8,
@@ -23,12 +23,12 @@ public enum IntegralType
 /// <summary>Public helpers for <see cref="IntegralType"/> size, CLR mapping, and compatibility.</summary>
 public static class IntegralTypeExtensions
 {
-    /// <summary>Byte width of one scalar of this type; 0 for <see cref="IntegralType.NONE"/>.</summary>
+    /// <summary>Byte width of one scalar of this type; 0 for <see cref="IntegralType.None"/>.</summary>
     public static int Size(this IntegralType type)
     {
         return type switch
         {
-            IntegralType.NONE => 0,
+            IntegralType.None => 0,
             IntegralType.UInt8 => 1,
             IntegralType.Int8 => 1,
             IntegralType.UInt16 => 2,
@@ -44,8 +44,51 @@ public static class IntegralTypeExtensions
     }
 
     /// <summary>
+    /// Checks if value is one of the defined values for <see cref="IntegralType"/>.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> for every known type, yes even for <see cref="IntegralType.None"/>.
+    /// </returns>
+    public static bool IsValid(this IntegralType type)
+    {
+        return type switch
+        {
+            IntegralType.None => true,
+            IntegralType.UInt8 => true,
+            IntegralType.Int8 => true,
+            IntegralType.UInt16 => true,
+            IntegralType.Int16 => true,
+            IntegralType.UInt32 => true,
+            IntegralType.Int32 => true,
+            IntegralType.UInt64 => true,
+            IntegralType.Int64 => true,
+            IntegralType.Float => true,
+            IntegralType.Double => true,
+            _ => false,
+        };
+    }
+
+    public static IntegralType TrimUndefined(this IntegralType type)
+    {
+        return type switch
+        {
+            IntegralType.UInt8 => IntegralType.UInt8,
+            IntegralType.Int8 => IntegralType.Int8,
+            IntegralType.UInt16 => IntegralType.UInt16,
+            IntegralType.Int16 => IntegralType.Int16,
+            IntegralType.UInt32 => IntegralType.UInt32,
+            IntegralType.Int32 => IntegralType.Int32,
+            IntegralType.UInt64 => IntegralType.UInt64,
+            IntegralType.Int64 => IntegralType.Int64,
+            IntegralType.Float => IntegralType.Float,
+            IntegralType.Double => IntegralType.Double,
+            _ => IntegralType.None,
+        };
+    }
+
+    /// <summary>
     /// Default <see cref="IntegralType"/> for CLR type <typeparamref name="T"/>,
-    /// or <see cref="IntegralType.NONE"/> if unsupported. The receiver is unused
+    /// or <see cref="IntegralType.None"/> if unsupported. The receiver is unused
     /// (call as <c>default(IntegralType).DefaultForType&lt;T&gt;()</c> or
     /// <c>IntegralType.NONE.DefaultForType&lt;T&gt;()</c>).
     /// </summary>
@@ -95,7 +138,7 @@ public static class IntegralTypeExtensions
             return IntegralType.Float;
         }
 
-        return IntegralType.NONE;
+        return IntegralType.None;
     }
 
     /// <summary>
@@ -107,7 +150,7 @@ public static class IntegralTypeExtensions
     {
         switch (id)
         {
-            case IntegralType.NONE:
+            case IntegralType.None:
                 return false;
 
             case IntegralType.Int8:

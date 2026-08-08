@@ -1,3 +1,4 @@
+using DotBase.Integral.Internal;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 
@@ -6,7 +7,7 @@ namespace DotBase.Integral;
 
 /// <summary>
 /// Aligned 2/4/8-byte pointer ops for integral primitives.
-/// Non-generic — call sites size-switch and land here.
+/// Non-generic - call sites size-switch and land here.
 /// <para>
 /// <see cref="IntegralSpan"/> keeps value addresses aligned to the scalar size
 /// (offset multiples of <c>ValueByteCount</c> from an aligned base). Compatible
@@ -82,11 +83,8 @@ internal static unsafe class IntegralPrimitives
                     (ulong)valueCount);
                 return;
             case 2:
-                for (long i = 0; i < valueCount; ++i)
-                {
-                    Swap2(destination + (i * 2), source + (i * 2));
-                }
-
+                // Bulk byte-pair swap (Int16 PCM and UInt16); see EndianSwap16BitLanes.
+                EndianSwap.Swap16BitLanes(source, destination, valueCount);
                 return;
             case 4:
                 for (long i = 0; i < valueCount; ++i)
@@ -124,12 +122,8 @@ internal static unsafe class IntegralPrimitives
         switch (valueByteCount)
         {
             case 2:
-                for (long i = 0; i < valueCount; ++i)
-                {
-                    byte* p = data + (i * 2);
-                    Swap2(p, p);
-                }
-
+                // Bulk byte-pair swap in place (Int16 PCM and UInt16).
+                EndianSwap.Swap16BitLanes(data, data, valueCount);
                 return;
             case 4:
                 for (long i = 0; i < valueCount; ++i)

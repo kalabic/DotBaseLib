@@ -110,28 +110,15 @@ public class IntegralRingBufferTests
                     capacityMismatch));
             Assert.Equal(0, ring.StoredBytes);
 
-            IntegralSpan invalidFormat =
-                IntegralTestData.CreateSpan(
-                    (byte*)sourcePtr,
-                    2,
-                    IntegralType.Int32);
-            ref IntegralSpanLayout invalidLayout =
-                ref Unsafe.As<
-                    IntegralSpan,
-                    IntegralSpanLayout>(
-                        ref invalidFormat);
-            ref IntegralPtrLayout pointerLayout =
-                ref Unsafe.As<
-                    IntegralPtr,
-                    IntegralPtrLayout>(
-                        ref invalidLayout.Ptr);
-            ref IntegralFormatLayout formatLayout =
-                ref Unsafe.As<
-                    IntegralFormat,
-                    IntegralFormatLayout>(
-                        ref pointerLayout.Format);
-            formatLayout.ByteOrder =
-                (ByteOrder)int.MaxValue;
+            // Explicitly invalid format (no layout overlay): Undefined byte order.
+            IntegralSpan invalidFormat = new(
+                (byte*)sourcePtr,
+                0,
+                2 * sizeof(int),
+                new IntegralFormat(
+                    IntegralType.Int32,
+                    1,
+                    ByteOrder.Undefined));
 
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => ring.TryWriteChecked(
@@ -437,21 +424,5 @@ public class IntegralRingBufferTests
         internal long Offset;
         internal long Length;
         internal IntegralCapacity Capacity;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private unsafe struct IntegralPtrLayout
-    {
-        internal byte* Pointer;
-        internal IntegralFormat Format;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct IntegralFormatLayout
-    {
-        internal ByteOrder ByteOrder;
-        internal IntegralType ValueType;
-        internal int BlockCapacity;
-        internal int ByteRate;
     }
 }

@@ -166,8 +166,8 @@ internal class SimpleWaitableValue<T>
     /// <param name="highMark"></param>
     /// <returns> 
     ///   <list type="bullet">
-    ///     <item> <c>true</c> if high mark value is not reached. Caller needs to wait. </item>
-    ///     <item> <c>false</c> if high mark value is reached, or if object was disposed. Caller should not wait. </item>
+    ///     <item> <see langword="true"/> if high mark value is not reached. Caller needs to wait. </item>
+    ///     <item> <see langword="false"/> if high mark value is reached, or if object was disposed. Caller should not wait. </item>
     /// </list>
     /// </returns>
     private bool ResetStoredHighMarkEvent(T highMark)
@@ -221,8 +221,8 @@ internal class SimpleWaitableValue<T>
     /// <param name="lowMark"></param>
     /// <returns> 
     ///   <list type="bullet">
-    ///     <item> <c>true</c> if low mark value is not reached. Caller needs to wait. </item>
-    ///     <item> <c>false</c> if low mark value is reached, or if object was disposed. Caller should not wait. </item>
+    ///     <item> <see langword="true"/> if low mark value is not reached. Caller needs to wait. </item>
+    ///     <item> <see langword="false"/> if low mark value is reached, or if object was disposed. Caller should not wait. </item>
     /// </list>
     /// </returns>
     private bool ResetStoredLowMarkEvent(T lowMark)

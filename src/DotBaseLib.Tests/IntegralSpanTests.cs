@@ -1,5 +1,7 @@
 using DotBase.Buffers;
 using DotBase.Integral;
+using DotBase.Integral.Conversion;
+using DotBase.Integral.Conversion.Numeric;
 
 namespace DotBaseLib.Tests;
 
@@ -267,11 +269,16 @@ public unsafe class IntegralSpanTests
                 IntegralType.UInt8,
                 1);
 
+            MarkerConverter converter = new();
             IntegralSpan beBytes = new(
                 bytes.BytePtr,
                 bytes.Offset,
                 bytes.Length,
-                new IntegralFormat(IntegralType.UInt8, 1, ByteOrder.BigEndian));
+                new IntegralFormat(
+                    IntegralType.UInt8,
+                    1,
+                    ByteOrder.BigEndian,
+                    converter));
 
             IntegralSpan asInt32 = beBytes.ChangeFormat(
                 IntegralType.Int32,
@@ -282,8 +289,9 @@ public unsafe class IntegralSpanTests
             Assert.Equal(beBytes.Length, asInt32.Length);
             Assert.Equal(IntegralType.Int32, asInt32.IntegralValueType);
             Assert.Equal(2, asInt32.Capacity.BlockCapacity);
-            // Byte order is preserved from the source span, not an argument.
+            // Byte order and converter are preserved from the source span.
             Assert.Equal(ByteOrder.BigEndian, asInt32.Format.ByteOrder);
+            Assert.Same(converter, asInt32.Format.Converter);
             Assert.Equal(2, asInt32.ValueCount);
             Assert.Equal(1, asInt32.BlockCount);
 
@@ -416,5 +424,12 @@ public unsafe class IntegralSpanTests
         Assert.Equal(0, (nint)span.BytePtr);
         Assert.Equal(0, (nint)span.DataPtr);
         Assert.True(span.Capacity.IsValueAligned());
+    }
+
+    private sealed class MarkerConverter : IIntegralValueConverter
+    {
+        public IntegralSpanConversionFunc? Func => null;
+
+        public NumericConverters? Converters => null;
     }
 }

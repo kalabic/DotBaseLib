@@ -126,7 +126,7 @@ public unsafe class ScalarCodecTests
         IntegralFormat format = new(
             IntegralType.Int32,
             1,
-            (ByteOrder)int.MaxValue);
+            ByteOrder.Undefined);
         Assert.Throws<ArgumentOutOfRangeException>(
             () => format.Validate());
     }

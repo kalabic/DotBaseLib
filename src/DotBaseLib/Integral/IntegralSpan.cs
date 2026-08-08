@@ -98,15 +98,15 @@ public readonly unsafe struct IntegralSpan
         long valueCount,
         int blockCapacity = 1,
         ByteOrder byteOrder = ByteOrder.Native,
-        IntegralType valueType = IntegralType.NONE)
+        IntegralType valueType = IntegralType.None)
         where T : unmanaged
     {
         ArgumentOutOfRangeException.ThrowIfNegative(valueCount);
 
-        IntegralType resolvedType = valueType == IntegralType.NONE
-            ? IntegralType.NONE.DefaultForType<T>()
+        IntegralType resolvedType = valueType == IntegralType.None
+            ? IntegralType.None.DefaultForType<T>()
             : valueType;
-        if (resolvedType == IntegralType.NONE)
+        if (resolvedType == IntegralType.None)
         {
             throw new ArgumentException(
                 $"Type '{typeof(T)}' is not a supported integral scalar type.",
@@ -358,7 +358,7 @@ public readonly unsafe struct IntegralSpan
     /// <summary>
     /// Slice this span to <paramref name="range"/> using
     /// <see cref="IntegralRange.BlockOffset"/> / <see cref="IntegralRange.BlockCount"/>
-    /// (parent block units only — not bytes or scalar values).
+    /// (parent block units only - not bytes or scalar values).
     /// </summary>
     public IntegralSpan GetBlockSpan(in IntegralRange range)
     {
@@ -367,7 +367,7 @@ public readonly unsafe struct IntegralSpan
 
     /// <summary>
     /// Parent-block slice, then re-label with type and block capacity
-    /// (preserves this span's byte order and rate via <see cref="ChangeFormat"/>).
+    /// (preserves this span's byte order and converter via <see cref="ChangeFormat"/>).
     /// <paramref name="range"/> stays in <b>parent</b> block units; it is not
     /// rescaled to the new type's blocks or values.
     /// </summary>
@@ -451,8 +451,8 @@ public readonly unsafe struct IntegralSpan
 
     /// <summary>
     /// Same memory region with a different value type / block layout. Does not
-    /// convert data and does not change <see cref="IntegralFormat.ByteOrder"/>
-    /// or <see cref="IntegralFormat.ByteRate"/> (those stay from this span).
+    /// convert data. Preserves <see cref="IntegralFormat.ByteOrder"/> and
+    /// <see cref="IntegralFormat.Converter"/> from this span.
     /// Use <see cref="IntegralMemory.Convert"/> / <see cref="IntegralMemory.ReverseCopy"/>
     /// for content transforms.
     /// <para>
@@ -470,11 +470,11 @@ public readonly unsafe struct IntegralSpan
                 valueType,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.ByteRate));
+                Format.Converter));
     }
 
     /// <summary>
-    /// Size-only format (<see cref="IntegralType.NONE"/>) variant of
+    /// Size-only format (<see cref="IntegralType.None"/>) variant of
     /// <see cref="ChangeFormat(IntegralType, int)"/>.
     /// </summary>
     public IntegralSpan ChangeFormat(
@@ -486,7 +486,7 @@ public readonly unsafe struct IntegralSpan
                 valueSize,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.ByteRate));
+                Format.Converter));
     }
 
     /// <summary>
@@ -502,7 +502,7 @@ public readonly unsafe struct IntegralSpan
                 valueType,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.ByteRate));
+                Format.Converter));
     }
 
     /// <summary>
@@ -517,7 +517,7 @@ public readonly unsafe struct IntegralSpan
                 valueSize,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.ByteRate));
+                Format.Converter));
     }
 
     private IntegralSpan ChangeFormatCore(in IntegralFormat format)

@@ -25,6 +25,116 @@ public unsafe class IntegralMemoryCopyTests
             [0, 1, 7, 31, 63]);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void ReverseCopy_Int16_OppositeEndian_BulkSwapPreservesHostValues(int count)
+    {
+        Run16BitOppositeEndianReverseCopy(count, IntegralType.Int16, i => (short)(-200 + i));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void ReverseCopy_UInt16_OppositeEndian_BulkSwapPreservesHostValues(int count)
+    {
+        Run16BitOppositeEndianReverseCopy(count, IntegralType.UInt16, i => (ushort)(0xB000 + i));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(9)]
+    public void IdentityConvert_Int16_OppositeEndian_MatchesReverseCopy(int count)
+    {
+        const ByteOrder le = ByteOrder.LittleEndian;
+        const ByteOrder be = ByteOrder.BigEndian;
+        byte* src = IntegralTestData.AlignedAlloc(Math.Max(1, count * sizeof(short)));
+        byte* dstConvert = IntegralTestData.AlignedAlloc(Math.Max(1, count * sizeof(short)));
+        byte* dstReverse = IntegralTestData.AlignedAlloc(Math.Max(1, count * sizeof(short)));
+        try
+        {
+            short[] values = new short[count];
+            for (int i = 0; i < count; ++i)
+            {
+                values[i] = (short)(i * 17 - 50);
+                IntegralTestData.WriteEncoded(src, i, values[i], le);
+            }
+
+            IntegralSpan leSpan = IntegralTestData.CreateSpan(src, count, IntegralType.Int16, le);
+            IntegralSpan beConvert = IntegralTestData.CreateSpan(
+                dstConvert, count, IntegralType.Int16, be);
+            IntegralSpan beReverse = IntegralTestData.CreateSpan(
+                dstReverse, count, IntegralType.Int16, be);
+
+            IntegralMemory.Convert(leSpan, beConvert, count, IntegralConversion.Identity);
+            IntegralMemory.ReverseCopy(leSpan, beReverse, count);
+
+            for (int i = 0; i < count; ++i)
+            {
+                IntegralTestData.AssertEncodedEqual(values[i], dstConvert, i, be);
+                IntegralTestData.AssertEncodedEqual(values[i], dstReverse, i, be);
+            }
+        }
+        finally
+        {
+            IntegralTestData.AlignedFree(src);
+            IntegralTestData.AlignedFree(dstConvert);
+            IntegralTestData.AlignedFree(dstReverse);
+        }
+    }
+
+    private static void Run16BitOppositeEndianReverseCopy<T>(
+        int count,
+        IntegralType type,
+        Func<int, T> valueAt)
+        where T : unmanaged
+    {
+        const ByteOrder le = ByteOrder.LittleEndian;
+        const ByteOrder be = ByteOrder.BigEndian;
+        int size = sizeof(T);
+        byte* src = IntegralTestData.AlignedAlloc(Math.Max(1, count * size));
+        byte* dst = IntegralTestData.AlignedAlloc(Math.Max(1, count * size));
+        try
+        {
+            T[] values = new T[count];
+            for (int i = 0; i < count; ++i)
+            {
+                values[i] = valueAt(i);
+                IntegralTestData.WriteEncoded(src, i, values[i], le);
+            }
+
+            IntegralSpan leSpan = IntegralTestData.CreateSpan(src, count, type, le);
+            IntegralSpan beSpan = IntegralTestData.CreateSpan(dst, count, type, be);
+
+            IntegralMemory.ReverseCopy(leSpan, beSpan, count);
+
+            for (int i = 0; i < count; ++i)
+            {
+                IntegralTestData.AssertEncodedEqual(values[i], dst, i, be);
+            }
+        }
+        finally
+        {
+            IntegralTestData.AlignedFree(src);
+            IntegralTestData.AlignedFree(dst);
+        }
+    }
+
     [Fact]
     public void SameTypeOppositeEndianReverseCopyReversesLanes()
     {

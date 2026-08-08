@@ -109,13 +109,13 @@ internal abstract unsafe class UnlockedRingBuffer
     /// <para>
     /// <b>Atomic, block-complete read (trusted).</b>
     /// Fills <b>all</b> complete blocks of <paramref name="destination"/>, or fails with
-    /// <c>false</c> and no ring mutation. Trailing values are never required or filled.
+    /// <see langword="false"/> and no ring mutation. Trailing values are never required or filled.
     /// </para>
     /// <para>
     /// No format/geometry validation — use <see cref="TryReadChecked"/> for untrusted spans.
     /// </para>
     /// </summary>
-    /// <returns><c>true</c> if every complete block of the destination was filled.</returns>
+    /// <returns><see langword="true"/> if every complete block of the destination was filled.</returns>
     public override bool TryRead(in IntegralSpan destination)
     {
         long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(destination);
@@ -158,13 +158,13 @@ internal abstract unsafe class UnlockedRingBuffer
     /// <para>
     /// <b>Atomic, block-complete write (trusted).</b>
     /// Writes <b>all</b> complete blocks of <paramref name="source"/>, or fails with
-    /// <c>false</c> and no ring mutation. Trailing values are never required or written.
+    /// <see langword="false"/> and no ring mutation. Trailing values are never required or written.
     /// </para>
     /// <para>
     /// No format/geometry validation — use <see cref="TryWriteChecked"/> for untrusted spans.
     /// </para>
     /// </summary>
-    /// <returns><c>true</c> if every complete block of the source was written.</returns>
+    /// <returns><see langword="true"/> if every complete block of the source was written.</returns>
     public override bool TryWrite(in IntegralSpan source)
     {
         long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(source);

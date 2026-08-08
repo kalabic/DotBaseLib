@@ -1,0 +1,953 @@
+using DotBase.Buffers;
+using DotBase.Integral.Conversion.Numeric;
+using DotBase.Integral.Conversion.Numeric.Defaults;
+using System.Diagnostics;
+
+namespace DotBase.Integral.Conversion.Internal.B2L;
+
+
+internal static unsafe class B2LConvertToFloat
+{
+    internal static void AddToTable(IConversionDelegateTable table)
+    {
+        table.SetCustomFunc(B2L_UInt8_To_Float, ByteOrder.BigEndian, IntegralType.UInt8, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_Int8_To_Float, ByteOrder.BigEndian, IntegralType.Int8, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_UInt16_To_Float, ByteOrder.BigEndian, IntegralType.UInt16, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_Int16_To_Float, ByteOrder.BigEndian, IntegralType.Int16, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_UInt32_To_Float, ByteOrder.BigEndian, IntegralType.UInt32, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_Int32_To_Float, ByteOrder.BigEndian, IntegralType.Int32, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_UInt64_To_Float, ByteOrder.BigEndian, IntegralType.UInt64, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_Int64_To_Float, ByteOrder.BigEndian, IntegralType.Int64, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_Float_To_Float, ByteOrder.BigEndian, IntegralType.Float, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetCustomFunc(B2L_Double_To_Float, ByteOrder.BigEndian, IntegralType.Double, ByteOrder.LittleEndian, IntegralType.Float);
+
+        table.SetDefaultFunc(B2L_UInt8_To_Float_Default, ByteOrder.BigEndian, IntegralType.UInt8, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_Int8_To_Float_Default, ByteOrder.BigEndian, IntegralType.Int8, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_UInt16_To_Float_Default, ByteOrder.BigEndian, IntegralType.UInt16, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_Int16_To_Float_Default, ByteOrder.BigEndian, IntegralType.Int16, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_UInt32_To_Float_Default, ByteOrder.BigEndian, IntegralType.UInt32, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_Int32_To_Float_Default, ByteOrder.BigEndian, IntegralType.Int32, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_UInt64_To_Float_Default, ByteOrder.BigEndian, IntegralType.UInt64, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_Int64_To_Float_Default, ByteOrder.BigEndian, IntegralType.Int64, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_Float_To_Float_Default, ByteOrder.BigEndian, IntegralType.Float, ByteOrder.LittleEndian, IntegralType.Float);
+        table.SetDefaultFunc(B2L_Double_To_Float_Default, ByteOrder.BigEndian, IntegralType.Double, ByteOrder.LittleEndian, IntegralType.Float);
+    }
+
+    public static long B2L_UInt8_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt8);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertUInt8ToFloat_Delegate convertUInt8ToFloat = context.ToFloat.ConvertUInt8ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            byte* src = (byte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                byte s = *src++;
+                float d = convertUInt8ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            byte* src = (byte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                byte s = *src++;
+                float d = convertUInt8ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_UInt8_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt8);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            byte* src = (byte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                byte s = *src++;
+                float d = DefaultConversionsToFloat.ConvertUInt8ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            byte* src = (byte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                byte s = *src++;
+                float d = DefaultConversionsToFloat.ConvertUInt8ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int8_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int8);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertInt8ToFloat_Delegate convertInt8ToFloat = context.ToFloat.ConvertInt8ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            sbyte* src = (sbyte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                sbyte s = *src++;
+                float d = convertInt8ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            sbyte* src = (sbyte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                sbyte s = *src++;
+                float d = convertInt8ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int8_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int8);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            sbyte* src = (sbyte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                sbyte s = *src++;
+                float d = DefaultConversionsToFloat.ConvertInt8ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            sbyte* src = (sbyte*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                sbyte s = *src++;
+                float d = DefaultConversionsToFloat.ConvertInt8ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_UInt16_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt16);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertUInt16ToFloat_Delegate convertUInt16ToFloat = context.ToFloat.ConvertUInt16ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            ushort* src = (ushort*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ushort s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = convertUInt16ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            ushort* src = (ushort*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ushort s = *src++;
+                float d = convertUInt16ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_UInt16_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt16);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            ushort* src = (ushort*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ushort s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = DefaultConversionsToFloat.ConvertUInt16ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            ushort* src = (ushort*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ushort s = *src++;
+                float d = DefaultConversionsToFloat.ConvertUInt16ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int16_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int16);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertInt16ToFloat_Delegate convertInt16ToFloat = context.ToFloat.ConvertInt16ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            short* src = (short*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                short s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = convertInt16ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            short* src = (short*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                short s = *src++;
+                float d = convertInt16ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int16_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int16);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            short* src = (short*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                short s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = DefaultConversionsToFloat.ConvertInt16ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            short* src = (short*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                short s = *src++;
+                float d = DefaultConversionsToFloat.ConvertInt16ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_UInt32_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt32);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertUInt32ToFloat_Delegate convertUInt32ToFloat = context.ToFloat.ConvertUInt32ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            uint* src = (uint*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                uint s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = convertUInt32ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            uint* src = (uint*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                uint s = *src++;
+                float d = convertUInt32ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_UInt32_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt32);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            uint* src = (uint*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                uint s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = DefaultConversionsToFloat.ConvertUInt32ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            uint* src = (uint*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                uint s = *src++;
+                float d = DefaultConversionsToFloat.ConvertUInt32ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int32_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int32);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertInt32ToFloat_Delegate convertInt32ToFloat = context.ToFloat.ConvertInt32ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            int* src = (int*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                int s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = convertInt32ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            int* src = (int*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                int s = *src++;
+                float d = convertInt32ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int32_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int32);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            int* src = (int*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                int s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = DefaultConversionsToFloat.ConvertInt32ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            int* src = (int*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                int s = *src++;
+                float d = DefaultConversionsToFloat.ConvertInt32ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_UInt64_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt64);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertUInt64ToFloat_Delegate convertUInt64ToFloat = context.ToFloat.ConvertUInt64ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            ulong* src = (ulong*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ulong s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = convertUInt64ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            ulong* src = (ulong*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ulong s = *src++;
+                float d = convertUInt64ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_UInt64_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.UInt64);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            ulong* src = (ulong*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ulong s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = DefaultConversionsToFloat.ConvertUInt64ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            ulong* src = (ulong*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ulong s = *src++;
+                float d = DefaultConversionsToFloat.ConvertUInt64ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int64_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int64);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertInt64ToFloat_Delegate convertInt64ToFloat = context.ToFloat.ConvertInt64ToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            long* src = (long*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                long s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = convertInt64ToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            long* src = (long*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                long s = *src++;
+                float d = convertInt64ToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Int64_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Int64);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            long* src = (long*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                long s = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*src++);
+                float d = DefaultConversionsToFloat.ConvertInt64ToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            long* src = (long*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                long s = *src++;
+                float d = DefaultConversionsToFloat.ConvertInt64ToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Float_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Float);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertFloatToFloat_Delegate convertFloatToFloat = context.ToFloat.ConvertFloatToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            float* src = (float*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                uint s_bits = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*(uint*)src);
+                src++;
+                float s = System.BitConverter.UInt32BitsToSingle(s_bits);
+                float d = convertFloatToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            float* src = (float*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                float s = *src++;
+                float d = convertFloatToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Float_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Float);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            float* src = (float*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                uint bits = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*(uint*)src);
+                src++;
+                *(uint*)dst = bits;
+                dst++;
+            }
+            return n;
+        }
+        else
+        {
+            float* src = (float*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                uint bits = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*(uint*)src);
+                src++;
+                *(uint*)dst = bits;
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Double_To_Float(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Double);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        ConvertDoubleToFloat_Delegate convertDoubleToFloat = context.ToFloat.ConvertDoubleToFloat;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            double* src = (double*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ulong s_bits = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*(ulong*)src);
+                src++;
+                double s = System.BitConverter.UInt64BitsToDouble(s_bits);
+                float d = convertDoubleToFloat(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            double* src = (double*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                double s = *src++;
+                float d = convertDoubleToFloat(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+    public static long B2L_Double_To_Float_Default(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long valuesCount,
+        NumericConverters context)
+    {
+        Debug.Assert(input.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
+        Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.LittleEndian);
+        Debug.Assert(input.IntegralValueType == IntegralType.Double);
+        Debug.Assert(output.IntegralValueType == IntegralType.Float);
+        _ = context;
+
+        long n = ConversionCount.Effective(input, output, valuesCount);
+        if (n == 0)
+        {
+            return 0;
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            double* src = (double*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                ulong s_bits = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*(ulong*)src);
+                src++;
+                double s = System.BitConverter.UInt64BitsToDouble(s_bits);
+                float d = DefaultConversionsToFloat.ConvertDoubleToFloat_Default(s);
+                *dst++ = d;
+            }
+            return n;
+        }
+        else
+        {
+            double* src = (double*)input.DataPtr;
+            float* dst = (float*)output.DataPtr;
+            for (long i = 0; i < n; ++i)
+            {
+                double s = *src++;
+                float d = DefaultConversionsToFloat.ConvertDoubleToFloat_Default(s);
+                *(uint*)dst = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(System.BitConverter.SingleToUInt32Bits(d));
+                dst++;
+            }
+            return n;
+        }
+    }
+
+}

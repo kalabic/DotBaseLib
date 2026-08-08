@@ -1,5 +1,7 @@
 using DotBase.Buffers;
 using DotBase.Integral;
+using DotBase.Integral.Conversion;
+using DotBase.Integral.Conversion.Numeric;
 
 namespace DotBaseLib.Tests;
 
@@ -9,7 +11,7 @@ public class IntegralFormatTests
     [Fact]
     public void SizeMatchesScalarWidths()
     {
-        Assert.Equal(0, IntegralType.NONE.Size());
+        Assert.Equal(0, IntegralType.None.Size());
         Assert.Equal(1, IntegralType.UInt8.Size());
         Assert.Equal(1, IntegralType.Int8.Size());
         Assert.Equal(2, IntegralType.Int16.Size());
@@ -22,25 +24,26 @@ public class IntegralFormatTests
     [Fact]
     public void DefaultForTypeMapsClrScalars()
     {
-        Assert.Equal(IntegralType.Int64, IntegralType.NONE.DefaultForType<long>());
-        Assert.Equal(IntegralType.UInt16, IntegralType.NONE.DefaultForType<ushort>());
-        Assert.Equal(IntegralType.Float, IntegralType.NONE.DefaultForType<float>());
-        Assert.Equal(IntegralType.NONE, IntegralType.NONE.DefaultForType<decimal>());
+        Assert.Equal(IntegralType.Int64, IntegralType.None.DefaultForType<long>());
+        Assert.Equal(IntegralType.UInt16, IntegralType.None.DefaultForType<ushort>());
+        Assert.Equal(IntegralType.Float, IntegralType.None.DefaultForType<float>());
+        Assert.Equal(IntegralType.None, IntegralType.None.DefaultForType<decimal>());
     }
 
     [Fact]
     public void ForBuildsFormatFromClrType()
     {
+        MarkerConverter converter = new();
         IntegralFormat stereoBe = IntegralFormat.For<short>(
             blockCapacity: 2,
             ByteOrder.BigEndian,
-            byteRate: 48000 * 4);
+            converter);
 
         Assert.Equal(IntegralType.Int16, stereoBe.ValueType);
         Assert.Equal(2, stereoBe.BlockCapacity);
         Assert.Equal(ByteOrder.BigEndian, stereoBe.ByteOrder);
+        Assert.Same(converter, stereoBe.Converter);
         Assert.Equal(4, stereoBe.BytesPerBlock);
-        Assert.Equal(48000 * 4, stereoBe.ByteRate);
         Assert.True(stereoBe.IsCompatible<short>());
         Assert.False(stereoBe.IsCompatible<int>());
     }
@@ -79,5 +82,12 @@ public class IntegralFormatTests
         {
             IntegralTestData.AlignedFree(p);
         }
+    }
+
+    private sealed class MarkerConverter : IIntegralValueConverter
+    {
+        public IntegralSpanConversionFunc? Func => null;
+
+        public NumericConverters? Converters => null;
     }
 }

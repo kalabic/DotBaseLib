@@ -161,11 +161,7 @@ internal static unsafe class IntegralTestData
         where T : unmanaged
     {
         byte[] bytes = NativeBytes(value);
-        ByteOrder resolved = byteOrder == ByteOrder.Native
-            ? BitConverter.IsLittleEndian
-                ? ByteOrder.LittleEndian
-                : ByteOrder.BigEndian
-            : byteOrder;
+        ByteOrder resolved = ResolveByteOrder(byteOrder);
 
         if (bytes.Length > 1 &&
             ((resolved == ByteOrder.LittleEndian) !=
@@ -175,6 +171,85 @@ internal static unsafe class IntegralTestData
         }
 
         return bytes;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="value"/> into <paramref name="dest"/> at
+    /// <paramref name="index"/> using explicit wire endianness (not a host store).
+    /// </summary>
+    internal static void WriteEncoded<T>(
+        byte* dest,
+        long index,
+        T value,
+        ByteOrder byteOrder)
+        where T : unmanaged
+    {
+        byte[] encoded = EncodedBytes(value, byteOrder);
+        long offset = checked(index * encoded.Length);
+        for (int i = 0; i < encoded.Length; ++i)
+        {
+            dest[offset + i] = encoded[i];
+        }
+    }
+
+    /// <summary>
+    /// Reads a host <typeparamref name="T"/> from wire bytes at
+    /// <paramref name="index"/> under <paramref name="byteOrder"/>.
+    /// </summary>
+    internal static T ReadEncoded<T>(
+        byte* src,
+        long index,
+        ByteOrder byteOrder)
+        where T : unmanaged
+    {
+        int size = Unsafe.SizeOf<T>();
+        long offset = checked(index * size);
+        byte[] bytes = new byte[size];
+        for (int i = 0; i < size; ++i)
+        {
+            bytes[i] = src[offset + i];
+        }
+
+        ByteOrder resolved = ResolveByteOrder(byteOrder);
+        if (size > 1 &&
+            ((resolved == ByteOrder.LittleEndian) !=
+             BitConverter.IsLittleEndian))
+        {
+            Array.Reverse(bytes);
+        }
+
+        return MemoryMarshal.Read<T>(bytes);
+    }
+
+    /// <summary>
+    /// Asserts that wire bytes at <paramref name="index"/> match
+    /// <paramref name="expected"/> encoded under <paramref name="byteOrder"/>.
+    /// </summary>
+    internal static void AssertEncodedEqual<T>(
+        T expected,
+        byte* actual,
+        long index,
+        ByteOrder byteOrder)
+        where T : unmanaged
+    {
+        byte[] expectedBytes = EncodedBytes(expected, byteOrder);
+        int size = expectedBytes.Length;
+        long offset = checked(index * size);
+        Assert.Equal(
+            expectedBytes,
+            new ReadOnlySpan<byte>(actual + offset, size).ToArray());
+    }
+
+    internal static ByteOrder ResolveByteOrder(ByteOrder byteOrder)
+    {
+        if (byteOrder == ByteOrder.Native)
+        {
+            return BitConverter.IsLittleEndian
+                ? ByteOrder.LittleEndian
+                : ByteOrder.BigEndian;
+        }
+
+        return byteOrder;
     }
 
 }

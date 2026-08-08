@@ -5,9 +5,9 @@ Unsafe scalar memory descriptors and endian-aware memory operations.
 `IntegralSpan` describes scalar values stored as signed or unsigned integers,
 `float`, or `double`, with an explicit byte order and optional block layout.
 `ChangeFormat` re-labels the same memory region with a different value type and
-block capacity (no data conversion). Byte order and byte-rate stay from the
+block capacity (no data conversion). Byte order and converter stay from the
 original span. `IntegralRange` is a half-open interval in a **parent span's
-blocks only** (`BlockOffset` / `BlockCount`) — not bytes and not scalar value
+blocks only** (`BlockOffset` / `BlockCount`) - not bytes and not scalar value
 counts (except when the parent is UInt8 with block capacity 1).
 `BlockByteSize` freezes the parent's block size in bytes so
 `ByteOffset` / `ByteLength` support raw `IntegralMemory.Copy` (memcpy) without
@@ -15,7 +15,7 @@ building a subspan. Retyping after `GetBlockSpan` does not rescale the range.
 `IntegralMemory` copies, moves, clears, converts, and performs strided
 transfers between compatible views.
 
-Short transfer names (`Copy`, `ReverseCopy`, `Convert`, `Move`, …) are
+Short transfer names (`Copy`, `ReverseCopy`, `Convert`, `Move`, ...) are
 **trusted** (no span validation) and **block-complete** by default. For
 compatible block capacities, they transfer the largest scalar prefix that is
 complete in both source and destination, leaving trailing partial-block values
@@ -28,7 +28,7 @@ remain value-granular; block framing is the caller's offset/stride.
 ## Main API
 
 - `IntegralType` and `IntegralFormat` describe scalar representation, byte
-  order, block capacity, and optional byte rate.
+  order, and block capacity.
 - `IntegralCapacity` reports byte, scalar-value, complete-block, and trailing
   value counts.
 - `IntegralPtr`, `IntegralSpan`, and `IntegralRange` describe unsafe memory and

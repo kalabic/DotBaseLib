@@ -35,7 +35,7 @@ internal static unsafe class IntegralRingSpanOps
         span.Format.Validate();
 
         if (span.Length == 0 &&
-            span.IntegralValueType == IntegralType.NONE)
+            span.IntegralValueType == IntegralType.None)
         {
             return 0;
         }

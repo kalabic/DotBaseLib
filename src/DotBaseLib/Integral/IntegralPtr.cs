@@ -57,7 +57,7 @@ public unsafe readonly struct IntegralPtr
     }
 
     /// <summary>Pins <paramref name="array"/> until the returned <see cref="Fixed{T}"/> is disposed.</summary>
-    public static Fixed<T> Pin<T>(T[] array, IntegralType format = IntegralType.NONE)
+    public static Fixed<T> Pin<T>(T[] array, IntegralType format = IntegralType.None)
         where T : unmanaged
     {
         ArgumentNullException.ThrowIfNull(array);
@@ -94,20 +94,20 @@ public unsafe readonly struct IntegralPtr
 
         public bool IsArray { get { return Arr is not null; } }
 
-        public Any(T* other, IntegralType format = IntegralType.NONE)
+        public Any(T* other, IntegralType format = IntegralType.None)
         {
             Arr = null;
             Ptr = other;
-            Format = (!GenericType<T>.IsByte && format == IntegralType.NONE) ? IntegralType.NONE.DefaultForType<T>() : format;
+            Format = (!GenericType<T>.IsByte && format == IntegralType.None) ? IntegralType.None.DefaultForType<T>() : format;
             Debug.Assert(GenericType<T>.IsByte || Format.IsCompatible<T>(), $"Type {nameof(T)} cannot hold the supplied sample-value format.");
         }
 
-        public Any(T[] other, IntegralType format = IntegralType.NONE)
+        public Any(T[] other, IntegralType format = IntegralType.None)
         {
             ArgumentNullException.ThrowIfNull(other);
             Arr = other;
             Ptr = default;
-            Format = (!GenericType<T>.IsByte && format == IntegralType.NONE) ? IntegralType.NONE.DefaultForType<T>() : format;
+            Format = (!GenericType<T>.IsByte && format == IntegralType.None) ? IntegralType.None.DefaultForType<T>() : format;
             Debug.Assert(GenericType<T>.IsByte || Format.IsCompatible<T>(), $"Type {nameof(T)} cannot hold the supplied sample-value format.");
         }
 

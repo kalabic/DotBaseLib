@@ -1,11 +1,13 @@
 using DotBase.Buffers;
+using DotBase.Integral.Conversion;
+using DotBase.Integral.Internal;
 
 namespace DotBase.Integral;
 
 
 /// <summary>
 ///
-/// Details of integral values, blocks with values, and a byte order for certain buffer.
+/// Describes integral value type, block layout, and byte order for a buffer.
 /// Construction does not fully validate; call <see cref="Validate"/> or
 /// <see cref="IsValid"/> when the format is used.
 ///
@@ -14,65 +16,53 @@ public readonly struct IntegralFormat
 {
     public static readonly IntegralFormat NONE = new IntegralFormat(0, 0);
 
+    public ByteOrder ByteOrder { get { return _valueFormat.ByteOrder; } }
+
     /// <summary> Number of bytes occupied by a complete block of integral values. </summary>
-    public long BytesPerBlock { get { return (long)ValueSize * BlockCapacity; } }
+    public long BytesPerBlock { get { return (long)_valueFormat.ValueSize * BlockCapacity; } }
 
-    /// <summary> Byte order used to store integral values inside certain buffer. </summary>
-    public readonly ByteOrder ByteOrder;
+    public int ValueSize { get { return _valueFormat.ValueSize; } }
 
-    /// <summary> Size in bytes of a single value. </summary>
-    public readonly int ValueSize;
+    public IntegralType ValueType { get { return _valueFormat.ValueType; } }
 
-    /// <summary> Type of integral values stored inside certain buffer. </summary>
-    public readonly IntegralType ValueType;
+    public IIntegralValueConverter? Converter { get { return _valueConverters; } }
+
+
+    /// <summary> Internal container for basic value properties. </summary>
+    private readonly IntegralValueFormat _valueFormat;
 
     public readonly int BlockCapacity;
 
-    /// <summary>
-    /// Optional (estimated) bytes per second rate passing through certain buffer.
-    /// A value of 0 indicates that the rate is unknown or inapplicable.
-    /// </summary>
-    public readonly long ByteRate;
+    internal readonly IIntegralValueConverter? _valueConverters;
 
     /// <summary>
     /// Known integral type. Sets <see cref="ValueSize"/> from <see cref="IntegralTypeExtensions.Size"/>.
-    /// Prefer the size constructor for <see cref="IntegralType.NONE"/> or size-only formats.
+    /// Prefer the size constructor for <see cref="IntegralType.None"/> or size-only formats.
     /// Does not validate; call <see cref="Validate"/> when the format is used.
     /// </summary>
-    public IntegralFormat(
-        IntegralType valueType,
-        int blockCapacity,
-        ByteOrder byteOrder = ByteOrder.Native,
-        long byteRate = 0)
+    public IntegralFormat(IntegralType valueType, int blockCapacity, ByteOrder byteOrder = ByteOrder.Native, IIntegralValueConverter? converter = null)
     {
-        if (valueType == IntegralType.NONE)
+        if (valueType == IntegralType.None)
         {
             throw new ArgumentException(
-                $"'{IntegralType.NONE}' is not a supported by format. Value size must be provided.",  nameof(valueType));
+                $"'{IntegralType.None}' is not supported by this constructor. Value size must be provided.",
+                nameof(valueType));
         }
 
-        ValueSize = valueType.Size();
-        ValueType = valueType;
+        _valueFormat = new IntegralValueFormat(byteOrder, valueType, valueType.Size());
         BlockCapacity = blockCapacity;
-        ByteOrder = byteOrder;
-        ByteRate = byteRate;
+        _valueConverters = converter;
     }
 
     /// <summary>
-    /// Size-only format (<see cref="IntegralType.NONE"/>) or empty sentinel (0, 0).
+    /// Size-only format (<see cref="IntegralType.None"/>) or empty sentinel (0, 0).
     /// Does not validate; call <see cref="Validate"/> when the format is used.
     /// </summary>
-    public IntegralFormat(
-        int valueSize,
-        int blockCapacity,
-        ByteOrder byteOrder = ByteOrder.Native,
-        long byteRate = 0)
+    public IntegralFormat(int valueSize, int blockCapacity, ByteOrder byteOrder = ByteOrder.Native, IIntegralValueConverter? converter = null)
     {
-        ValueSize = valueSize;
-        ValueType = IntegralType.NONE;
+        _valueFormat = new IntegralValueFormat(byteOrder, IntegralType.None, valueSize);
         BlockCapacity = blockCapacity;
-        ByteOrder = byteOrder;
-        ByteRate = byteRate;
+        _valueConverters = converter;
     }
 
     /// <summary>
@@ -82,35 +72,35 @@ public readonly struct IntegralFormat
     public static IntegralFormat For<T>(
         int blockCapacity = 1,
         ByteOrder byteOrder = ByteOrder.Native,
-        long byteRate = 0)
+        IIntegralValueConverter? converter = null)
         where T : unmanaged
     {
-        IntegralType valueType = IntegralType.NONE.DefaultForType<T>();
-        if (valueType == IntegralType.NONE)
+        IntegralType valueType = IntegralType.None.DefaultForType<T>();
+        if (valueType == IntegralType.None)
         {
             throw new ArgumentException(
                 $"Type '{typeof(T)}' is not a supported integral scalar type.",
                 nameof(T));
         }
 
-        return new IntegralFormat(valueType, blockCapacity, byteOrder, byteRate);
+        return new IntegralFormat(valueType, blockCapacity, byteOrder, converter);
     }
 
     public bool IsCompatible<T>()
         where T : unmanaged
     {
-        return ValueType.IsCompatible<T>();
+        return _valueFormat.IsCompatible<T>();
     }
 
     public bool IsEmptyType()
     {
-        return IsEmptyType(ValueType, ValueSize, BlockCapacity);
+        return IsEmptyType(_valueFormat.ValueType, _valueFormat.ValueSize, BlockCapacity);
     }
 
     /// <summary>True for empty sentinel or a fully consistent non-empty format.</summary>
     public bool IsValid()
     {
-        return IsValid(ValueType, ValueSize, BlockCapacity, ByteOrder);
+        return IsValid(_valueFormat.ValueType, _valueFormat.ValueSize, BlockCapacity, _valueFormat.ByteOrder);
     }
 
     /// <summary>
@@ -119,7 +109,7 @@ public readonly struct IntegralFormat
     /// </summary>
     public void Validate()
     {
-        Validate(ValueType, ValueSize, BlockCapacity, ByteOrder);
+        Validate(_valueFormat.ValueType, _valueFormat.ValueSize, BlockCapacity, _valueFormat.ByteOrder);
     }
 
     private static void Validate(
@@ -151,7 +141,7 @@ public readonly struct IntegralFormat
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(valueSize, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(blockCapacity, 0);
 
-        if (valueType != IntegralType.NONE &&
+        if (valueType != IntegralType.None &&
             valueType.Size() != valueSize)
         {
             throw new ArgumentOutOfRangeException(
@@ -187,7 +177,7 @@ public readonly struct IntegralFormat
             return false;
         }
 
-        if (valueType != IntegralType.NONE && valueType.Size() != valueSize)
+        if (valueType != IntegralType.None && valueType.Size() != valueSize)
         {
             return false;
         }
@@ -203,7 +193,7 @@ public readonly struct IntegralFormat
         int valueSize,
         int blockCapacity)
     {
-        return valueType == IntegralType.NONE &&
+        return valueType == IntegralType.None &&
                valueSize == 0 &&
                blockCapacity == 0;
     }

@@ -68,7 +68,7 @@ public readonly struct IntegralCapacity
 
     /// <summary>
     /// Capacity for a named integral type. Does not validate; call <see cref="Validate"/>.
-    /// For <see cref="IntegralType.NONE"/> prefer <see cref="IntegralCapacity(long, in IntegralFormat)"/>.
+    /// For <see cref="IntegralType.None"/> prefer <see cref="IntegralCapacity(long, in IntegralFormat)"/>.
     /// </summary>
     public IntegralCapacity(long byteCount, IntegralType valueType, int blockCapacity)
     {

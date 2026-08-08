@@ -169,6 +169,55 @@ public unsafe class IntegralMemoryMoveTests
         }
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public unsafe void ExactSamePointer_Int16_ReverseEndianInPlace(int count)
+    {
+        short[] values = new short[count];
+        for (int i = 0; i < count; ++i)
+        {
+            values[i] = (short)(i * 31 - 100);
+        }
+
+        byte* pointer = IntegralTestData.AlignedAlloc(count * sizeof(short));
+        try
+        {
+            IntegralSpan little = IntegralTestData.CreateSpan(
+                pointer,
+                count,
+                IntegralType.Int16,
+                ByteOrder.LittleEndian);
+            for (int i = 0; i < count; ++i)
+            {
+                little.SetAtIndex(i, values[i]);
+            }
+
+            IntegralSpan big = IntegralTestData.CreateSpan(
+                pointer,
+                count,
+                IntegralType.Int16,
+                ByteOrder.BigEndian);
+            IntegralMemory.ReverseMove(little, big);
+
+            for (int i = 0; i < count; ++i)
+            {
+                Assert.Equal(values[i], big.AtIndex<short>(i));
+                IntegralTestData.AssertEncodedEqual(
+                    values[i],
+                    pointer,
+                    i,
+                    ByteOrder.BigEndian);
+            }
+        }
+        finally
+        {
+            IntegralTestData.AlignedFree(pointer);
+        }
+    }
+
     [Fact]
     public void OverlappingTypeAndAffineConversionsPreserveLogicalSource()
     {

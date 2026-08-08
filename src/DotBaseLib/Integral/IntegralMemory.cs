@@ -14,9 +14,9 @@ namespace DotBase.Integral;
 /// Use <c>*Checked</c> to validate descriptors and layout/endian contracts.
 /// </para>
 /// <list type="bullet">
-/// <item><see cref="Copy"/> / <see cref="CopyChecked"/> — same layout and endian; raw bytes.</item>
-/// <item><see cref="ReverseCopy"/> / <see cref="ReverseCopyChecked"/> — lane byte-reversal only.</item>
-/// <item><see cref="Convert"/> / <see cref="ConvertChecked"/> — explicit type/endian/scale.</item>
+/// <item><see cref="Copy"/> / <see cref="CopyChecked"/> - same layout and endian; raw bytes.</item>
+/// <item><see cref="ReverseCopy"/> / <see cref="ReverseCopyChecked"/> - lane byte-reversal only.</item>
+/// <item><see cref="Convert"/> / <see cref="ConvertChecked"/> - explicit type/endian/scale.</item>
 /// </list>
 /// </summary>
 public static unsafe class IntegralMemory

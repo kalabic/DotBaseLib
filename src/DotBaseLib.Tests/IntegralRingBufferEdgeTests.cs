@@ -555,7 +555,7 @@ public class IntegralRingBufferEdgeTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Waitable_Read_BlocksUntilFullRequestAvailable()
+    public async Task Waitable_Read_BlocksUntilFullRequestAvailable()
     {
         using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
             4 * sizeof(int),
@@ -571,22 +571,21 @@ public class IntegralRingBufferEdgeTests
         });
 
         Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-        Thread.Sleep(40);
+        await Task.Delay(40);
         Assert.False(readTask.IsCompleted);
 
         Assert.True(ring.TryWrite(1));
         Assert.True(ring.TryWrite(2));
-        Thread.Sleep(40);
+        await Task.Delay(40);
         Assert.False(readTask.IsCompleted);
 
         Assert.True(ring.TryWrite(3));
-        Assert.True(readTask.Wait(TimeSpan.FromSeconds(5)));
-        Assert.Equal(3, readTask.Result);
+        Assert.Equal(3, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(new[] { 1, 2, 3 }, dest);
     }
 
     [Fact]
-    public unsafe void Waitable_IntegralSpanRead_BlocksUntilFullRequestAvailable()
+    public async Task Waitable_IntegralSpanRead_BlocksUntilFullRequestAvailable()
     {
         using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
             4 * sizeof(int),
@@ -597,12 +596,16 @@ public class IntegralRingBufferEdgeTests
         GCHandle pin = GCHandle.Alloc(dest, GCHandleType.Pinned);
         try
         {
-            byte* p = (byte*)pin.AddrOfPinnedObject();
-            IntegralSpan dst = IntegralTestData.CreateSpan(
-                p,
-                3,
-                IntegralType.Int32,
-                ByteOrder.Native);
+            IntegralSpan dst;
+            unsafe
+            {
+                byte* p = (byte*)pin.AddrOfPinnedObject();
+                dst = IntegralTestData.CreateSpan(
+                    p,
+                    3,
+                    IntegralType.Int32,
+                    ByteOrder.Native);
+            }
 
             using ManualResetEventSlim started = new();
             Task<int> readTask = Task.Run(() =>
@@ -612,17 +615,16 @@ public class IntegralRingBufferEdgeTests
             });
 
             Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-            Thread.Sleep(40);
+            await Task.Delay(40);
             Assert.False(readTask.IsCompleted);
 
             Assert.True(ring.TryWrite(10));
             Assert.True(ring.TryWrite(20));
-            Thread.Sleep(40);
+            await Task.Delay(40);
             Assert.False(readTask.IsCompleted);
 
             Assert.True(ring.TryWrite(30));
-            Assert.True(readTask.Wait(TimeSpan.FromSeconds(5)));
-            Assert.Equal(3, readTask.Result);
+            Assert.Equal(3, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal(new[] { 10, 20, 30 }, dest);
         }
         finally
@@ -636,7 +638,7 @@ public class IntegralRingBufferEdgeTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Locked_ParallelProducersConsumers_NoLostOrDupes()
+    public async Task Locked_ParallelProducersConsumers_NoLostOrDupes()
     {
         const int producers = 4;
         const int perProducer = 250;
@@ -677,7 +679,7 @@ public class IntegralRingBufferEdgeTests
             }
         });
 
-        Assert.True(Task.WaitAll(writers.Append(reader).ToArray(), TimeSpan.FromSeconds(30)));
+        await Task.WhenAll(writers.Append(reader)).WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(total, readCount);
         Array.Sort(consumed);
