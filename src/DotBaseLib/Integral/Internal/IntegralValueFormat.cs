@@ -28,14 +28,37 @@ internal readonly struct IntegralValueFormat
         get { return _valueSize; }
     }
 
-    public ushort Extended
+    public sbyte ExtendedId
     {
-        get { return _extended; }
+        get { return HasExtendedId ? (sbyte)(_extended & EXTENDED_ID_MASK) : (sbyte)-1; }
     }
 
-    private const uint BYTEORDER_MASK = 0x0003;
+    public sbyte ExtendedType
+    {
+        get { return HasExtendedType ? (sbyte)((_extended & EXTENDED_TYPE_MASK) >> 8) : (sbyte)-1; }
+    }
 
-    private const uint VALUETYPE_MASK = 0x3F00;
+    public bool HasExtendedId
+    {
+        get { return (_extended & EXTENDED_ID_FLAG) != 0; }
+    }
+
+    public bool HasExtendedType
+    {
+        get { return (_extended & EXTENDED_TYPE_FLAG) != 0; }
+    }
+
+    private const uint BYTEORDER_MASK = 0x0003u;
+
+    private const uint VALUETYPE_MASK = 0x3F00u;
+
+    private const uint EXTENDED_TYPE_FLAG = 0x8000u;
+
+    private const uint EXTENDED_TYPE_MASK = 0x7F00u;
+
+    private const uint EXTENDED_ID_FLAG = 0x0080u;
+
+    private const uint EXTENDED_ID_MASK = 0x007Fu;
 
     private readonly int _valueSize;
 
@@ -50,14 +73,14 @@ internal readonly struct IntegralValueFormat
         _extended = 0;
     }
 
-    public IntegralValueFormat(ByteOrder byteOrder, IntegralType valueType, int valueSize)
+    public IntegralValueFormat(ByteOrder byteOrder, IntegralType valueType, int valueSize, sbyte extendedType = -1, sbyte extendedId = -1)
     {
         // ByteOrder.Undefined (and other invalid orders) may be packed here;
         // IntegralFormat.Validate rejects them at use sites.
         Debug.Assert(valueType.IsValid());
         Debug.Assert(valueSize >= 0);
 
-        // Empty sentinel: size 0 with NONE.
+        // Empty sentinel: size 0 with None.
         Debug.Assert(valueSize > 0 || valueType == IntegralType.None);
 
         if (valueType.IsValid() && valueSize >= 0)
@@ -66,7 +89,14 @@ internal readonly struct IntegralValueFormat
             uint packedByteOrder = ((uint)byteOrder.TrimUndefined()) & BYTEORDER_MASK;
             uint packedValueType = ((uint)valueType.TrimUndefined() << 8) & VALUETYPE_MASK;
             _packType = (ushort)(packedByteOrder | packedValueType);
-            _extended = 0;
+
+            uint packedExtendedType = (extendedType >= 0) ? (uint)(extendedType << 8) : 0;
+            packedExtendedType = (extendedType >= 0) ? (packedExtendedType | EXTENDED_TYPE_FLAG) : 0;
+
+            uint packedExtendedId = (extendedId >= 0) ? (uint)extendedId : 0;
+            packedExtendedId = (extendedId >= 0) ? (packedExtendedId | EXTENDED_ID_FLAG) : 0;
+
+            _extended = (ushort)(packedExtendedType | packedExtendedId);
         }
         else
         {
@@ -76,7 +106,7 @@ internal readonly struct IntegralValueFormat
         }
     }
 
-    public IntegralValueFormat(ByteOrder byteOrder, ushort extended, int valueSize)
+    public IntegralValueFormat(ByteOrder byteOrder, int valueSize, sbyte extendedType = -1, sbyte extendedId = -1)
     {
         Debug.Assert(valueSize > 0);
 
@@ -86,7 +116,14 @@ internal readonly struct IntegralValueFormat
             uint packedByteOrder = ((uint)byteOrder.TrimUndefined()) & BYTEORDER_MASK;
             uint packedValueType = ((uint)IntegralType.None << 8) & VALUETYPE_MASK;
             _packType = (ushort)(packedByteOrder | packedValueType);
-            _extended = extended;
+
+            uint packedExtendedType = (extendedType >= 0) ? (uint)(extendedType << 8) : 0;
+            packedExtendedType = (extendedType >= 0) ? (packedExtendedType | EXTENDED_TYPE_FLAG) : 0;
+
+            uint packedExtendedId = (extendedId >= 0) ? (uint)extendedId : 0;
+            packedExtendedId = (extendedId >= 0) ? (packedExtendedId | EXTENDED_ID_FLAG) : 0;
+
+            _extended = (ushort)(packedExtendedType | packedExtendedId);
         }
         else
         {

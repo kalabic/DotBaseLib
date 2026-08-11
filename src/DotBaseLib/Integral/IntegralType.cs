@@ -90,7 +90,7 @@ public static class IntegralTypeExtensions
     /// Default <see cref="IntegralType"/> for CLR type <typeparamref name="T"/>,
     /// or <see cref="IntegralType.None"/> if unsupported. The receiver is unused
     /// (call as <c>default(IntegralType).DefaultForType&lt;T&gt;()</c> or
-    /// <c>IntegralType.NONE.DefaultForType&lt;T&gt;()</c>).
+    /// <c>IntegralType.None.DefaultForType&lt;T&gt;()</c>).
     /// </summary>
     public static IntegralType DefaultForType<T>(this IntegralType id)
         where T : unmanaged

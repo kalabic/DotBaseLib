@@ -27,7 +27,7 @@ public unsafe readonly struct IntegralPtr
     public IntegralPtr()
     {
         BytePtr = null;
-        Fmt = IntegralFormat.NONE;
+        Fmt = IntegralFormat.Empty;
     }
 
     /// <summary>

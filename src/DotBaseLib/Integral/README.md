@@ -5,10 +5,10 @@ Unsafe scalar memory descriptors and endian-aware memory operations.
 `IntegralSpan` describes scalar values stored as signed or unsigned integers,
 `float`, or `double`, with an explicit byte order and optional block layout.
 `ChangeFormat` re-labels the same memory region with a different value type and
-block capacity (no data conversion). Byte order and converter stay from the
-original span. `IntegralRange` is a half-open interval in a **parent span's
-blocks only** (`BlockOffset` / `BlockCount`) - not bytes and not scalar value
-counts (except when the parent is UInt8 with block capacity 1).
+block capacity (no data conversion). Byte order and conversion policy stay
+from the original span. `IntegralRange` is a half-open interval in a **parent
+span's blocks only** (`BlockOffset` / `BlockCount`) - not bytes and not scalar
+value counts (except when the parent is UInt8 with block capacity 1).
 `BlockByteSize` freezes the parent's block size in bytes so
 `ByteOffset` / `ByteLength` support raw `IntegralMemory.Copy` (memcpy) without
 building a subspan. Retyping after `GetBlockSpan` does not rescale the range.
@@ -34,13 +34,63 @@ remain value-granular; block framing is the caller's offset/stride.
 - `IntegralPtr`, `IntegralSpan`, and `IntegralRange` describe unsafe memory and
   slices without taking ownership of it. `IntegralPtr.Pin<T>` provides an
   owned pin for managed arrays.
-- `IntegralConversion` configures numeric scale and bias.
+- `NumericScaleBias` configures an optional numeric scale and bias.
+- `IntegralConversionPolicy` selects default, refused, or custom conversion
+  factories independently for contiguous, interleaved-reader, and
+  interleaved-writer paths.
+- `ConversionHandles` resolves conversion handles and their contexts.
 - `IntegralMemory` provides trusted and checked copy, reverse, conversion,
   move, clear, and strided operations.
 
 The declared `IntegralType` formats are `UInt8`, `Int8`, `UInt16`, `Int16`,
 `UInt32`, `Int32`, `UInt64`, `Int64`, `Float`, and `Double`. Typed APIs check
 compatibility against the span or format via `IsCompatible<T>`.
+`IntegralFormat.Empty` is the empty/no-buffer format sentinel.
+
+## Numeric conversion and routing
+
+`NumericScaleBias` is passed to `IntegralMemory.Convert` when a transfer needs
+the transform `value * Scale + Bias` before conversion to the destination
+type. Both values must be finite. `NumericScaleBias.Identity` applies no
+transform and enables same-layout copy and endian-swap fast paths where
+possible.
+
+An `IntegralConversionPolicy` is stored in an `IntegralFormat` and controls
+conversion into that format. It contains three independent policy slots: one
+for contiguous spans, one for interleaved readers, and one for interleaved
+writers. Each slot is either the default conversion table, an explicit refusal,
+or a rooted custom handle factory. `IntegralConversionPolicy.None` uses the
+default tables for all paths; `RefuseAll` disables every path;
+`FromValueConverters` installs custom scalar converters on every path; and
+`FromFunc` installs a structural conversion function for the contiguous path.
+`Create` is the lower-level entry point for supplying individual path slots.
+
+`ConversionHandles` is the public routing facade. `GetHandle` resolves a
+contiguous `IntegralConversionHandle`; `GetInterleavedReaderHandle` and
+`GetInterleavedWriterHandle` resolve the corresponding layout-aware handles.
+A null handle (`IsNull`) means the requested conversion is unavailable or was
+refused by policy. Handles with no custom scalar converter can be invoked
+directly. Otherwise, obtain the matching context from `ConversionHandles` and
+pass it to `Convert`.
+
+`ConversionContext` carries per-call state and invokes its bound handle.
+`NumericConversionContext` additionally resolves a handle's scalar converter.
+`InterleavedReaderContext` and `InterleavedWriterContext` extend that numeric
+context with block capacity and lane index.
+
+## Interleaved layouts
+
+An interleaved block contains multiple scalar lanes, such as left/right audio
+samples. An interleaved reader gathers one `ValueIndex` lane from each complete
+input block into dense output. Its input block capacity is greater than one and
+the output block capacity is one. An interleaved writer scatters dense input
+into one `ValueIndex` lane of each complete output block. Its input block
+capacity is one and the output block capacity is greater than one.
+
+The conversion count is the number of lane values, not the total number of
+scalars in the interleaved storage. Only complete blocks are considered, and a
+writer changes only its selected output lane; neighboring lanes remain
+untouched.
 
 ## Value alignment
 

@@ -1,7 +1,6 @@
 using DotBase.Buffers;
 using DotBase.Integral;
 using DotBase.Integral.Conversion;
-using DotBase.Integral.Conversion.Numeric;
 
 namespace DotBaseLib.Tests;
 
@@ -19,7 +18,7 @@ public unsafe class IntegralSpanTests
             null,
             0,
             0,
-            IntegralFormat.NONE);
+            IntegralFormat.Empty);
         AssertEmpty(explicitEmpty);
     }
 
@@ -269,7 +268,8 @@ public unsafe class IntegralSpanTests
                 IntegralType.UInt8,
                 1);
 
-            MarkerConverter converter = new();
+            IntegralConversionPolicy policy =
+                IntegralConversionPolicy.FromValueConverters(NumericValueConverters.Default);
             IntegralSpan beBytes = new(
                 bytes.BytePtr,
                 bytes.Offset,
@@ -278,7 +278,7 @@ public unsafe class IntegralSpanTests
                     IntegralType.UInt8,
                     1,
                     ByteOrder.BigEndian,
-                    converter));
+                    policy));
 
             IntegralSpan asInt32 = beBytes.ChangeFormat(
                 IntegralType.Int32,
@@ -289,9 +289,9 @@ public unsafe class IntegralSpanTests
             Assert.Equal(beBytes.Length, asInt32.Length);
             Assert.Equal(IntegralType.Int32, asInt32.IntegralValueType);
             Assert.Equal(2, asInt32.Capacity.BlockCapacity);
-            // Byte order and converter are preserved from the source span.
+            // Byte order and converter policy are preserved from the source span.
             Assert.Equal(ByteOrder.BigEndian, asInt32.Format.ByteOrder);
-            Assert.Same(converter, asInt32.Format.Converter);
+            Assert.Equal(policy, asInt32.Format.ConversionPolicy);
             Assert.Equal(2, asInt32.ValueCount);
             Assert.Equal(1, asInt32.BlockCount);
 
@@ -426,10 +426,4 @@ public unsafe class IntegralSpanTests
         Assert.True(span.Capacity.IsValueAligned());
     }
 
-    private sealed class MarkerConverter : IIntegralValueConverter
-    {
-        public IntegralSpanConversionFunc? Func => null;
-
-        public NumericConverters? Converters => null;
-    }
 }

@@ -37,7 +37,7 @@ internal static class IntegralNumericConversion<TSource, TDestination>
     /// </summary>
     internal static TDestination Convert(
         TSource source,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         if (conversion.IsIdentity &&
             typeof(TSource) == typeof(TDestination))

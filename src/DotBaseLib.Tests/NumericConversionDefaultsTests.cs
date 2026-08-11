@@ -7,7 +7,7 @@ namespace DotBaseLib.Tests;
 
 
 /// <summary>
-/// Parity: monomorphized NumericConversionTo* defaults vs IntegralNumericConversion Identity.
+/// Parity: DefaultConversionsTo* scalar defaults vs IntegralNumericConversion Identity.
 /// </summary>
 public class NumericConversionDefaultsTests
 {
@@ -18,7 +18,7 @@ public class NumericConversionDefaultsTests
         foreach (byte v in new byte[] { 0, 1, 127, 128, 255 })
         {
             Assert.Equal(
-                IntegralNumericConversion<byte, float>.Convert(v, IntegralConversion.Identity),
+                IntegralNumericConversion<byte, float>.Convert(v, NumericScaleBias.Identity),
                 DefaultConversionsToFloat.ConvertUInt8ToFloat_Default(v));
         }
 
@@ -26,7 +26,7 @@ public class NumericConversionDefaultsTests
         foreach (short v in new short[] { short.MinValue, -1, 0, 1, short.MaxValue })
         {
             Assert.Equal(
-                IntegralNumericConversion<short, float>.Convert(v, IntegralConversion.Identity),
+                IntegralNumericConversion<short, float>.Convert(v, NumericScaleBias.Identity),
                 DefaultConversionsToFloat.ConvertInt16ToFloat_Default(v));
         }
 
@@ -34,7 +34,7 @@ public class NumericConversionDefaultsTests
         foreach (float v in new float[] { float.NaN, -10f, 0f, 42.9f, 255f, 255.1f, 1000f })
         {
             Assert.Equal(
-                IntegralNumericConversion<float, byte>.Convert(v, IntegralConversion.Identity),
+                IntegralNumericConversion<float, byte>.Convert(v, NumericScaleBias.Identity),
                 DefaultConversionsToUInt8.ConvertFloatToUInt8_Default(v));
         }
 
@@ -42,7 +42,7 @@ public class NumericConversionDefaultsTests
         foreach (ushort v in new ushort[] { 0, 1, 127, 128, 255, ushort.MaxValue })
         {
             Assert.Equal(
-                IntegralNumericConversion<ushort, sbyte>.Convert(v, IntegralConversion.Identity),
+                IntegralNumericConversion<ushort, sbyte>.Convert(v, NumericScaleBias.Identity),
                 DefaultConversionsToInt8.ConvertUInt16ToInt8_Default(v));
         }
 
@@ -50,7 +50,7 @@ public class NumericConversionDefaultsTests
         foreach (int v in new int[] { int.MinValue, -1, 0, 1, 65535, 65536, int.MaxValue })
         {
             Assert.Equal(
-                IntegralNumericConversion<int, ushort>.Convert(v, IntegralConversion.Identity),
+                IntegralNumericConversion<int, ushort>.Convert(v, NumericScaleBias.Identity),
                 DefaultConversionsToUInt16.ConvertInt32ToUInt16_Default(v));
         }
 
@@ -67,7 +67,7 @@ public class NumericConversionDefaultsTests
                  })
         {
             Assert.Equal(
-                IntegralNumericConversion<double, float>.Convert(v, IntegralConversion.Identity),
+                IntegralNumericConversion<double, float>.Convert(v, NumericScaleBias.Identity),
                 DefaultConversionsToFloat.ConvertDoubleToFloat_Default(v));
         }
 
@@ -83,13 +83,13 @@ public class NumericConversionDefaultsTests
                  })
         {
             Assert.Equal(
-                IntegralNumericConversion<float, double>.Convert(v, IntegralConversion.Identity),
+                IntegralNumericConversion<float, double>.Convert(v, NumericScaleBias.Identity),
                 DefaultConversionsToDouble.ConvertFloatToDouble_Default(v));
         }
 
         // Integer → Double simple cast
         Assert.Equal(
-            IntegralNumericConversion<ulong, double>.Convert(ulong.MaxValue, IntegralConversion.Identity),
+            IntegralNumericConversion<ulong, double>.Convert(ulong.MaxValue, NumericScaleBias.Identity),
             DefaultConversionsToDouble.ConvertUInt64ToDouble_Default(ulong.MaxValue));
 
         // Identity same-type

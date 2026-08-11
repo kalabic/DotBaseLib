@@ -1,7 +1,7 @@
 using DotBase.Buffers;
 using DotBase.Integral;
 using DotBase.Integral.Conversion;
-using DotBase.Integral.Conversion.Numeric;
+using DotBase.Integral.Conversion.Internal;
 
 namespace DotBaseLib.Tests;
 
@@ -33,16 +33,18 @@ public class IntegralFormatTests
     [Fact]
     public void ForBuildsFormatFromClrType()
     {
-        MarkerConverter converter = new();
+        IntegralConversionPolicy policy =
+            IntegralConversionPolicy.FromValueConverters(NumericValueConverters.Default);
         IntegralFormat stereoBe = IntegralFormat.For<short>(
             blockCapacity: 2,
             ByteOrder.BigEndian,
-            converter);
+            policy);
 
         Assert.Equal(IntegralType.Int16, stereoBe.ValueType);
         Assert.Equal(2, stereoBe.BlockCapacity);
         Assert.Equal(ByteOrder.BigEndian, stereoBe.ByteOrder);
-        Assert.Same(converter, stereoBe.Converter);
+        Assert.Equal(policy, stereoBe.ConversionPolicy);
+        Assert.False(ConversionPolicySlot.IsDefault(stereoBe.ConversionPolicy.SpanHandleFactorySlot));
         Assert.Equal(4, stereoBe.BytesPerBlock);
         Assert.True(stereoBe.IsCompatible<short>());
         Assert.False(stereoBe.IsCompatible<int>());
@@ -53,6 +55,40 @@ public class IntegralFormatTests
     {
         Assert.Throws<ArgumentException>(
             () => IntegralFormat.For<decimal>());
+    }
+
+    [Fact]
+    public void IntegralFormatAndPolicyAreUnmanaged()
+    {
+        MustBeUnmanaged<IntegralFormat>();
+        MustBeUnmanaged<IntegralConversionPolicy>();
+    }
+
+    [Fact]
+    public void FromValueConverters_SharesFactorySlots()
+    {
+        NumericValueConverters table = NumericValueConverters.Default;
+        IntegralConversionPolicy a = IntegralConversionPolicy.FromValueConverters(table);
+        IntegralConversionPolicy b = IntegralConversionPolicy.FromValueConverters(table);
+        Assert.Equal(a, b);
+        Assert.True(ConversionPolicySlot.IsFactory(a.SpanHandleFactorySlot));
+        Assert.True(ConversionPolicySlot.IsFactory(a.ReaderHandleFactorySlot));
+        Assert.True(ConversionPolicySlot.IsFactory(a.WriterHandleFactorySlot));
+    }
+
+    [Fact]
+    public void RefuseAll_ProducesNullHandles()
+    {
+        IntegralFormat input = IntegralFormat.For<byte>();
+        IntegralFormat output = new(
+            IntegralType.UInt8,
+            1,
+            ByteOrder.Native,
+            IntegralConversionPolicy.RefuseAll());
+
+        Assert.True(ConversionHandles.GetHandle(input, output).IsNull);
+        Assert.True(ConversionHandles.GetInterleavedReaderHandle(input, output).IsNull);
+        Assert.True(ConversionHandles.GetInterleavedWriterHandle(input, output).IsNull);
     }
 
     [Fact]
@@ -84,10 +120,8 @@ public class IntegralFormatTests
         }
     }
 
-    private sealed class MarkerConverter : IIntegralValueConverter
+    private static void MustBeUnmanaged<T>()
+        where T : unmanaged
     {
-        public IntegralSpanConversionFunc? Func => null;
-
-        public NumericConverters? Converters => null;
     }
 }

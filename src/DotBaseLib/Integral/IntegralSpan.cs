@@ -367,7 +367,7 @@ public readonly unsafe struct IntegralSpan
 
     /// <summary>
     /// Parent-block slice, then re-label with type and block capacity
-    /// (preserves this span's byte order and converter via <see cref="ChangeFormat"/>).
+    /// (preserves this span's byte order and converter policy via <see cref="ChangeFormat"/>).
     /// <paramref name="range"/> stays in <b>parent</b> block units; it is not
     /// rescaled to the new type's blocks or values.
     /// </summary>
@@ -452,7 +452,7 @@ public readonly unsafe struct IntegralSpan
     /// <summary>
     /// Same memory region with a different value type / block layout. Does not
     /// convert data. Preserves <see cref="IntegralFormat.ByteOrder"/> and
-    /// <see cref="IntegralFormat.Converter"/> from this span.
+    /// <see cref="IntegralFormat.ConversionPolicy"/> from this span.
     /// Use <see cref="IntegralMemory.Convert"/> / <see cref="IntegralMemory.ReverseCopy"/>
     /// for content transforms.
     /// <para>
@@ -470,7 +470,7 @@ public readonly unsafe struct IntegralSpan
                 valueType,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.Converter));
+                Format.ConversionPolicy));
     }
 
     /// <summary>
@@ -486,7 +486,7 @@ public readonly unsafe struct IntegralSpan
                 valueSize,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.Converter));
+                Format.ConversionPolicy));
     }
 
     /// <summary>
@@ -502,7 +502,7 @@ public readonly unsafe struct IntegralSpan
                 valueType,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.Converter));
+                Format.ConversionPolicy));
     }
 
     /// <summary>
@@ -517,7 +517,7 @@ public readonly unsafe struct IntegralSpan
                 valueSize,
                 blockCapacity,
                 Format.ByteOrder,
-                Format.Converter));
+                Format.ConversionPolicy));
     }
 
     private IntegralSpan ChangeFormatCore(in IntegralFormat format)

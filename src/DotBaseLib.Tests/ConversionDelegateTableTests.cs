@@ -2,7 +2,6 @@ using DotBase.Buffers;
 using DotBase.Integral;
 using DotBase.Integral.Conversion;
 using DotBase.Integral.Conversion.Numeric;
-using DotBase.Integral.Conversion.Numeric.Defaults;
 
 namespace DotBaseLib.Tests;
 
@@ -29,7 +28,7 @@ public unsafe class ConversionDelegateTableTests
                 dstMem, capacity, IntegralType.UInt8, ByteOrder.LittleEndian);
 
             IntegralConversionHandle handle =
-                ConversionDelegateTable.Instance.GetConversionHandle(src, dst);
+                ConversionHandles.GetHandle(src.Format, dst.Format);
 
             Assert.False(handle.IsNull);
 
@@ -68,7 +67,7 @@ public unsafe class ConversionDelegateTableTests
                 dstMem, count, IntegralType.Float, wire);
 
             IntegralConversionHandle handle =
-                ConversionDelegateTable.Instance.GetConversionHandle(src, dst);
+                ConversionHandles.GetHandle(src.Format, dst.Format);
 
             long converted = handle.Convert(src, dst, count);
             Assert.Equal(count, converted);
@@ -109,7 +108,7 @@ public unsafe class ConversionDelegateTableTests
                 dstMem, count, IntegralType.Int16, destinationWire);
 
             IntegralConversionHandle handle =
-                ConversionDelegateTable.Instance.GetConversionHandle(input, output);
+                ConversionHandles.GetHandle(input.Format, output.Format);
 
             long converted = handle.Convert(input, output, count);
             Assert.Equal(count, converted);
@@ -160,9 +159,9 @@ public unsafe class ConversionDelegateTableTests
                 dstMem, count, IntegralType.Float, host);
 
             var handleNative =
-                ConversionDelegateTable.Instance.GetConversionHandle(srcNative, dstNative);
+                ConversionHandles.GetHandle(srcNative.Format, dstNative.Format);
             var handleExplicit =
-                ConversionDelegateTable.Instance.GetConversionHandle(srcExplicit, dstExplicit);
+                ConversionHandles.GetHandle(srcExplicit.Format, dstExplicit.Format);
 
             Assert.False(handleNative.IsNull);
             Assert.False(handleExplicit.IsNull);
@@ -209,8 +208,7 @@ public unsafe class ConversionDelegateTableTests
             IntegralSpan output = IntegralTestData.CreateSpan(
                 dstMem, count, IntegralType.UInt8, wire);
 
-            long converted = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
+            long converted = ConversionHandles.GetHandle(input.Format, output.Format)
                 .Convert(input, output, count);
 
             Assert.Equal(count, converted);
@@ -241,8 +239,7 @@ public unsafe class ConversionDelegateTableTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, 4, IntegralType.UInt8, ByteOrder.LittleEndian);
 
-            long converted = ConversionDelegateTable.Instance
-                .GetConversionHandle(src, dst)
+            long converted = ConversionHandles.GetHandle(src.Format, dst.Format)
                 .Convert(src, dst, 0);
 
             Assert.Equal(0, converted);
@@ -275,8 +272,7 @@ public unsafe class ConversionDelegateTableTests
             IntegralSpan output = IntegralTestData.CreateSpan(
                 dstMem, count, IntegralType.UInt8, ByteOrder.LittleEndian);
 
-            long n = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
+            long n = ConversionHandles.GetHandle(input.Format, output.Format)
                 .Convert(input, output, count);
 
             Assert.Equal(count, n);
@@ -312,8 +308,7 @@ public unsafe class ConversionDelegateTableTests
             IntegralSpan output = IntegralTestData.CreateSpan(
                 dstMem, count, IntegralType.Float, wire);
 
-            long n = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
+            long n = ConversionHandles.GetHandle(input.Format, output.Format)
                 .Convert(input, output, count);
 
             Assert.Equal(count, n);
@@ -336,7 +331,7 @@ public unsafe class ConversionDelegateTableTests
         IntegralConversionHandle viaNew = new();
         IntegralConversionHandle explicitNull = new IntegralConversionHandle(
             func: null,
-            context: new NumericConverters(DefaultConvertersFactory.Instance));
+            numericFunc: 0);
 
         Assert.True(defaultHandle.IsNull);
         Assert.True(viaNew.IsNull);
@@ -372,9 +367,14 @@ public unsafe class ConversionDelegateTableTests
                 IntegralTestData.WriteEncoded(srcMem, i, 10 + i, wire);
             }
 
-            IIntegralValueConverter converter =
-                new ConvertersOnlyValueConverter(
-                    new NumericConverters(new ScaleInt32IdentityFactory(3)));
+            IntegralConversionPolicy conversionPolicy =
+                IntegralConversionPolicy.FromValueConverters(
+                    NumericValueConverters.Create(table =>
+                    {
+                        int scale = 3;
+                        ConvertInt32ToInt32_Delegate d = value => value * scale;
+                        table.SetConverter(d, IntegralType.Int32, IntegralType.Int32);
+                    }));
 
             IntegralSpan input = IntegralTestData.CreateSpan(
                 srcMem, count, IntegralType.Int32, wire);
@@ -386,11 +386,14 @@ public unsafe class ConversionDelegateTableTests
                     IntegralType.Int32,
                     1,
                     wire,
-                    converter));
+                    conversionPolicy));
 
-            long n = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
-                .Convert(input, output, count);
+            IntegralConversionHandle handle =
+                ConversionHandles.GetHandle(input.Format, output.Format);
+            ConversionContext? ctx =
+                ConversionHandles.GetContext(handle, input.Format, output.Format);
+            Assert.NotNull(ctx);
+            long n = handle.Convert(input, output, count, ctx);
 
             Assert.Equal(count, n);
             for (int i = 0; i < count; ++i)
@@ -425,9 +428,14 @@ public unsafe class ConversionDelegateTableTests
                 IntegralTestData.WriteEncoded(srcMem, i, values[i], sourceWire);
             }
 
-            IIntegralValueConverter converter =
-                new ConvertersOnlyValueConverter(
-                    new NumericConverters(new ScaleInt32IdentityFactory(2)));
+            IntegralConversionPolicy converterPolicy =
+                IntegralConversionPolicy.FromValueConverters(
+                    NumericValueConverters.Create(table =>
+                    {
+                        int scale = 2;
+                        ConvertInt32ToInt32_Delegate d = value => value * scale;
+                        table.SetConverter(d, IntegralType.Int32, IntegralType.Int32);
+                    }));
 
             IntegralSpan input = IntegralTestData.CreateSpan(
                 srcMem, count, IntegralType.Int32, sourceWire);
@@ -439,11 +447,14 @@ public unsafe class ConversionDelegateTableTests
                     IntegralType.Int32,
                     1,
                     destinationWire,
-                    converter));
+                    converterPolicy));
 
-            long n = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
-                .Convert(input, output, count);
+            IntegralConversionHandle handle =
+                ConversionHandles.GetHandle(input.Format, output.Format);
+            ConversionContext? ctx =
+                ConversionHandles.GetContext(handle, input.Format, output.Format);
+            Assert.NotNull(ctx);
+            long n = handle.Convert(input, output, count, ctx);
 
             Assert.Equal(count, n);
             for (int i = 0; i < count; ++i)
@@ -481,8 +492,7 @@ public unsafe class ConversionDelegateTableTests
             IntegralSpan output = IntegralTestData.CreateSpan(
                 dstMem, count, IntegralType.Int32, wire);
 
-            long n = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
+            long n = ConversionHandles.GetHandle(input.Format, output.Format)
                 .Convert(input, output, count);
 
             Assert.Equal(count, n);
@@ -550,9 +560,14 @@ public unsafe class ConversionDelegateTableTests
                 IntegralTestData.WriteEncoded(srcMem, i, values[i], sourceWire);
             }
 
-            IIntegralValueConverter converter =
-                new ConvertersOnlyValueConverter(
-                    new NumericConverters(new ScaleUInt16IdentityFactory(10)));
+            IntegralConversionPolicy converterPolicy =
+                IntegralConversionPolicy.FromValueConverters(
+                    NumericValueConverters.Create(table =>
+                    {
+                        int scale = 10;
+                        ConvertUInt16ToUInt16_Delegate d = value => (ushort)(value * scale);
+                        table.SetConverter(d, IntegralType.UInt16, IntegralType.UInt16);
+                    }));
 
             IntegralSpan input = IntegralTestData.CreateSpan(
                 srcMem, count, IntegralType.UInt16, sourceWire);
@@ -564,11 +579,14 @@ public unsafe class ConversionDelegateTableTests
                     IntegralType.UInt16,
                     1,
                     destinationWire,
-                    converter));
+                    converterPolicy));
 
-            long n = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
-                .Convert(input, output, count);
+            IntegralConversionHandle handle =
+                ConversionHandles.GetHandle(input.Format, output.Format);
+            ConversionContext? ctx =
+                ConversionHandles.GetContext(handle, input.Format, output.Format);
+            Assert.NotNull(ctx);
+            long n = handle.Convert(input, output, count, ctx);
 
             Assert.Equal(count, n);
             for (int i = 0; i < count; ++i)
@@ -612,8 +630,7 @@ public unsafe class ConversionDelegateTableTests
             IntegralSpan output = IntegralTestData.CreateSpan(
                 dstMem, count, type, destinationWire);
 
-            long n = ConversionDelegateTable.Instance
-                .GetConversionHandle(input, output)
+            long n = ConversionHandles.GetHandle(input.Format, output.Format)
                 .Convert(input, output, count);
 
             Assert.Equal(count, n);
@@ -637,8 +654,7 @@ public unsafe class ConversionDelegateTableTests
                     IntegralSpan leDest = IntegralTestData.CreateSpan(
                         roundTrip, count, type, sourceWire);
 
-                    long n2 = ConversionDelegateTable.Instance
-                        .GetConversionHandle(beSource, leDest)
+                    long n2 = ConversionHandles.GetHandle(beSource.Format, leDest.Format)
                         .Convert(beSource, leDest, count);
 
                     Assert.Equal(count, n2);
@@ -664,84 +680,4 @@ public unsafe class ConversionDelegateTableTests
         }
     }
 
-    /// <summary>Output converter that only supplies <see cref="IIntegralValueConverter.Converters"/>.</summary>
-    private sealed class ConvertersOnlyValueConverter : IIntegralValueConverter
-    {
-        public ConvertersOnlyValueConverter(NumericConverters converters)
-        {
-            Converters = converters;
-        }
-
-        public IntegralSpanConversionFunc? Func => null;
-
-        public NumericConverters? Converters { get; }
-    }
-
-    /// <summary>
-    /// Default numeric converters with a non-identity <c>ConvertInt32ToInt32</c> scale.
-    /// </summary>
-    private sealed class ScaleInt32IdentityFactory : INumericConvertersFactory
-    {
-        private readonly int _scale;
-        private readonly INumericConvertersFactory _defaults =
-            DefaultConvertersFactory.Instance;
-
-        public ScaleInt32IdentityFactory(int scale)
-        {
-            _scale = scale;
-        }
-
-        public NumericConversionToUInt8 UInt8Conversion() => _defaults.UInt8Conversion();
-        public NumericConversionToInt8 Int8Conversion() => _defaults.Int8Conversion();
-        public NumericConversionToUInt16 UInt16Conversion() => _defaults.UInt16Conversion();
-        public NumericConversionToInt16 Int16Conversion() => _defaults.Int16Conversion();
-        public NumericConversionToUInt32 UInt32Conversion() => _defaults.UInt32Conversion();
-        public NumericConversionToUInt64 UInt64Conversion() => _defaults.UInt64Conversion();
-        public NumericConversionToInt64 Int64Conversion() => _defaults.Int64Conversion();
-        public NumericConversionToFloat FloatConversion() => _defaults.FloatConversion();
-        public NumericConversionToDouble DoubleConversion() => _defaults.DoubleConversion();
-
-        public NumericConversionToInt32 Int32Conversion()
-        {
-            ConversionToInt32Delegates d = new();
-            d.ResetToDefaults();
-            int scale = _scale;
-            d.ConvertInt32ToInt32 = value => value * scale;
-            return new NumericConversionToInt32(d);
-        }
-    }
-
-    /// <summary>
-    /// Default numeric converters with a non-identity <c>ConvertUInt16ToUInt16</c> scale.
-    /// </summary>
-    private sealed class ScaleUInt16IdentityFactory : INumericConvertersFactory
-    {
-        private readonly int _scale;
-        private readonly INumericConvertersFactory _defaults =
-            DefaultConvertersFactory.Instance;
-
-        public ScaleUInt16IdentityFactory(int scale)
-        {
-            _scale = scale;
-        }
-
-        public NumericConversionToUInt8 UInt8Conversion() => _defaults.UInt8Conversion();
-        public NumericConversionToInt8 Int8Conversion() => _defaults.Int8Conversion();
-        public NumericConversionToInt16 Int16Conversion() => _defaults.Int16Conversion();
-        public NumericConversionToUInt32 UInt32Conversion() => _defaults.UInt32Conversion();
-        public NumericConversionToInt32 Int32Conversion() => _defaults.Int32Conversion();
-        public NumericConversionToUInt64 UInt64Conversion() => _defaults.UInt64Conversion();
-        public NumericConversionToInt64 Int64Conversion() => _defaults.Int64Conversion();
-        public NumericConversionToFloat FloatConversion() => _defaults.FloatConversion();
-        public NumericConversionToDouble DoubleConversion() => _defaults.DoubleConversion();
-
-        public NumericConversionToUInt16 UInt16Conversion()
-        {
-            ConversionToUInt16Delegates d = new();
-            d.ResetToDefaults();
-            int scale = _scale;
-            d.ConvertUInt16ToUInt16 = value => (ushort)(value * scale);
-            return new NumericConversionToUInt16(d);
-        }
-    }
 }

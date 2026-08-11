@@ -223,11 +223,11 @@ public unsafe class IntegralMemoryMoveTests
     {
         RunOverlappingExpansion(
             4,
-            IntegralConversion.Identity,
+            NumericScaleBias.Identity,
             index => index + 1);
         RunOverlappingExpansion(
             4,
-            new IntegralConversion(
+            new NumericScaleBias(
                 2,
                 1),
             index => (index + 1) * 2 + 1);
@@ -238,17 +238,17 @@ public unsafe class IntegralMemoryMoveTests
     {
         RunOverlappingExpansion(
             64,
-            IntegralConversion.Identity,
+            NumericScaleBias.Identity,
             index => index % 251);
         RunOverlappingExpansion(
             600,
-            IntegralConversion.Identity,
+            NumericScaleBias.Identity,
             index => index % 251);
     }
 
     private static void RunOverlappingExpansion(
         int valueCount,
-        in IntegralConversion conversion,
+        in NumericScaleBias conversion,
         Func<int, int> expected)
     {
         // Dest at +2 keeps UInt16 natural alignment while still overlapping.

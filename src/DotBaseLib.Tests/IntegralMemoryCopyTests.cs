@@ -11,7 +11,7 @@ public unsafe class IntegralMemoryCopyTests
     public void IdentityConvertCoversCompleteTypeEndianCrossProduct()
     {
         RunConvertCrossProduct(
-            IntegralConversion.Identity,
+            NumericScaleBias.Identity,
             [0, 1, 7, 31, 63]);
     }
 
@@ -19,7 +19,7 @@ public unsafe class IntegralMemoryCopyTests
     public void AffineConvertCoversCompleteTypeEndianCrossProduct()
     {
         RunConvertCrossProduct(
-            new IntegralConversion(
+            new NumericScaleBias(
                 2,
                 1),
             [0, 1, 7, 31, 63]);
@@ -81,7 +81,7 @@ public unsafe class IntegralMemoryCopyTests
             IntegralSpan beReverse = IntegralTestData.CreateSpan(
                 dstReverse, count, IntegralType.Int16, be);
 
-            IntegralMemory.Convert(leSpan, beConvert, count, IntegralConversion.Identity);
+            IntegralMemory.Convert(leSpan, beConvert, count, NumericScaleBias.Identity);
             IntegralMemory.ReverseCopy(leSpan, beReverse, count);
 
             for (int i = 0; i < count; ++i)
@@ -532,7 +532,7 @@ public unsafe class IntegralMemoryCopyTests
     }
 
     private static void RunConvertCrossProduct(
-        in IntegralConversion conversion,
+        in NumericScaleBias conversion,
         double[] sourceValues)
     {
         foreach (IntegralType sourceType in IntegralTestData.Types)

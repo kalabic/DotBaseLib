@@ -312,7 +312,7 @@ public static unsafe class IntegralMemory
     public static void Convert(
         in IntegralSpan source,
         in IntegralSpan destination,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         Convert(
             source,
@@ -328,7 +328,7 @@ public static unsafe class IntegralMemory
         in IntegralSpan source,
         in IntegralSpan destination,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         if (valueCount == 0)
         {
@@ -379,7 +379,7 @@ public static unsafe class IntegralMemory
     public static void ConvertChecked(
         in IntegralSpan source,
         in IntegralSpan destination,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         source.Validate();
         destination.Validate();
@@ -391,7 +391,7 @@ public static unsafe class IntegralMemory
         in IntegralSpan source,
         in IntegralSpan destination,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         source.Validate();
         destination.Validate();
@@ -403,7 +403,7 @@ public static unsafe class IntegralMemory
         in IntegralSpan source,
         in IntegralSpan destination,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         if (valueCount == 0)
         {
@@ -575,7 +575,7 @@ public static unsafe class IntegralMemory
     public static void ConvertMove(
         in IntegralSpan source,
         in IntegralSpan destination,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         ConvertMove(
             source,
@@ -588,7 +588,7 @@ public static unsafe class IntegralMemory
         in IntegralSpan source,
         in IntegralSpan destination,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         if (valueCount == 0)
         {
@@ -682,7 +682,7 @@ public static unsafe class IntegralMemory
     public static void ConvertMoveChecked(
         in IntegralSpan source,
         in IntegralSpan destination,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         source.Validate();
         destination.Validate();
@@ -697,7 +697,7 @@ public static unsafe class IntegralMemory
         in IntegralSpan source,
         in IntegralSpan destination,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         source.Validate();
         destination.Validate();
@@ -749,7 +749,7 @@ public static unsafe class IntegralMemory
             destination.IntegralValueType,
             destination.Format.ByteOrder.Resolve(),
             valueCount,
-            IntegralConversion.Identity);
+            NumericScaleBias.Identity);
     }
 
     public static void CopyStridedChecked(
@@ -793,7 +793,7 @@ public static unsafe class IntegralMemory
             destination.IntegralValueType,
             destination.Format.ByteOrder.Resolve(),
             valueCount,
-            IntegralConversion.Identity);
+            NumericScaleBias.Identity);
     }
 
     public static void ConvertStrided(
@@ -804,7 +804,7 @@ public static unsafe class IntegralMemory
         long destinationValueOffset,
         long destinationValueStride,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         if (valueCount == 0)
         {
@@ -845,7 +845,7 @@ public static unsafe class IntegralMemory
         long destinationValueOffset,
         long destinationValueStride,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         source.Validate();
         destination.Validate();
@@ -1217,7 +1217,7 @@ public static unsafe class IntegralMemory
         IntegralType destinationType,
         ByteOrder destinationByteOrder,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
     {
         switch (sourceType)
         {
@@ -1296,7 +1296,7 @@ public static unsafe class IntegralMemory
         IntegralType destinationType,
         ByteOrder destinationByteOrder,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
         where TSource : unmanaged
     {
         switch (destinationType)
@@ -1379,7 +1379,7 @@ public static unsafe class IntegralMemory
         long destinationByteStride,
         ByteOrder destinationByteOrder,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
         where TSource : unmanaged
         where TDestination : unmanaged
     {
@@ -1418,7 +1418,7 @@ public static unsafe class IntegralMemory
         byte* destination,
         long destinationByteStride,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
         where TSource : unmanaged
         where TDestination : unmanaged
     {
@@ -1445,7 +1445,7 @@ public static unsafe class IntegralMemory
         byte* destination,
         long destinationByteStride,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
         where TSource : unmanaged
         where TDestination : unmanaged
     {
@@ -1472,7 +1472,7 @@ public static unsafe class IntegralMemory
         byte* destination,
         long destinationByteStride,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
         where TSource : unmanaged
         where TDestination : unmanaged
     {
@@ -1499,7 +1499,7 @@ public static unsafe class IntegralMemory
         byte* destination,
         long destinationByteStride,
         long valueCount,
-        in IntegralConversion conversion)
+        in NumericScaleBias conversion)
         where TSource : unmanaged
         where TDestination : unmanaged
     {
