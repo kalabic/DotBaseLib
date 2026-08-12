@@ -6,7 +6,7 @@ namespace DotBase.Integral.Conversion;
 /// <summary>
 /// Layout context for interleaved <b>reader</b> conversion: gather one lane from
 /// each complete multi-value input block into dense serial output.
-/// Pass into <see cref="IntegralConversionHandle.Convert"/>.
+/// Call <see cref="ConversionContext.Convert"/> on this context.
 /// </summary>
 public sealed class InterleavedReaderContext 
     : NumericConversionContext

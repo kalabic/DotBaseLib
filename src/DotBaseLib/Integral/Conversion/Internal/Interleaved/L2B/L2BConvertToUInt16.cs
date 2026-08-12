@@ -8,29 +8,24 @@ namespace DotBase.Integral.Conversion.Internal.Interleaved.L2B;
 
 internal static unsafe class L2BConvertToUInt16
 {
-    internal static void AddToTable(IConversionDelegateTable table)
-    {
-        table.SetCustomFunc(L2B_UInt8_To_UInt16, ByteOrder.LittleEndian, IntegralType.UInt8, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_Int8_To_UInt16, ByteOrder.LittleEndian, IntegralType.Int8, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_UInt16_To_UInt16, ByteOrder.LittleEndian, IntegralType.UInt16, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_Int16_To_UInt16, ByteOrder.LittleEndian, IntegralType.Int16, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_UInt32_To_UInt16, ByteOrder.LittleEndian, IntegralType.UInt32, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_Int32_To_UInt16, ByteOrder.LittleEndian, IntegralType.Int32, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_UInt64_To_UInt16, ByteOrder.LittleEndian, IntegralType.UInt64, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_Int64_To_UInt16, ByteOrder.LittleEndian, IntegralType.Int64, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_Float_To_UInt16, ByteOrder.LittleEndian, IntegralType.Float, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetCustomFunc(L2B_Double_To_UInt16, ByteOrder.LittleEndian, IntegralType.Double, ByteOrder.BigEndian, IntegralType.UInt16);
 
-        table.SetDefaultFunc(L2B_UInt8_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.UInt8, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_Int8_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.Int8, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_UInt16_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.UInt16, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_Int16_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.Int16, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_UInt32_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.UInt32, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_Int32_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.Int32, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_UInt64_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.UInt64, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_Int64_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.Int64, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_Float_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.Float, ByteOrder.BigEndian, IntegralType.UInt16);
-        table.SetDefaultFunc(L2B_Double_To_UInt16_Default, ByteOrder.LittleEndian, IntegralType.Double, ByteOrder.BigEndian, IntegralType.UInt16);
+    internal static InterleavedConversionDelegates Resolve(
+        in IntegralFormat input)
+    {
+        return input.ValueType switch
+        {
+            IntegralType.UInt8 => new(L2B_UInt8_To_UInt16, L2B_UInt8_To_UInt16_Default),
+            IntegralType.Int8 => new(L2B_Int8_To_UInt16, L2B_Int8_To_UInt16_Default),
+            IntegralType.UInt16 => new(L2B_UInt16_To_UInt16, L2B_UInt16_To_UInt16_Default),
+            IntegralType.Int16 => new(L2B_Int16_To_UInt16, L2B_Int16_To_UInt16_Default),
+            IntegralType.UInt32 => new(L2B_UInt32_To_UInt16, L2B_UInt32_To_UInt16_Default),
+            IntegralType.Int32 => new(L2B_Int32_To_UInt16, L2B_Int32_To_UInt16_Default),
+            IntegralType.UInt64 => new(L2B_UInt64_To_UInt16, L2B_UInt64_To_UInt16_Default),
+            IntegralType.Int64 => new(L2B_Int64_To_UInt16, L2B_Int64_To_UInt16_Default),
+            IntegralType.Float => new(L2B_Float_To_UInt16, L2B_Float_To_UInt16_Default),
+            IntegralType.Double => new(L2B_Double_To_UInt16, L2B_Double_To_UInt16_Default),
+            _ => throw new ArgumentOutOfRangeException(nameof(input)),
+        };
     }
 
     public static long L2B_UInt8_To_UInt16(

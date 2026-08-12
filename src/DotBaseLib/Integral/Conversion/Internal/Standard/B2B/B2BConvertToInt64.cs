@@ -8,29 +8,24 @@ namespace DotBase.Integral.Conversion.Internal.Standard.B2B;
 
 internal static unsafe class B2BConvertToInt64
 {
-    internal static void AddToTable(IConversionDelegateTable table)
-    {
-        table.SetCustomFunc(B2B_UInt8_To_Int64, ByteOrder.BigEndian, IntegralType.UInt8, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_Int8_To_Int64, ByteOrder.BigEndian, IntegralType.Int8, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_UInt16_To_Int64, ByteOrder.BigEndian, IntegralType.UInt16, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_Int16_To_Int64, ByteOrder.BigEndian, IntegralType.Int16, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_UInt32_To_Int64, ByteOrder.BigEndian, IntegralType.UInt32, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_Int32_To_Int64, ByteOrder.BigEndian, IntegralType.Int32, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_UInt64_To_Int64, ByteOrder.BigEndian, IntegralType.UInt64, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_Int64_To_Int64, ByteOrder.BigEndian, IntegralType.Int64, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_Float_To_Int64, ByteOrder.BigEndian, IntegralType.Float, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2B_Double_To_Int64, ByteOrder.BigEndian, IntegralType.Double, ByteOrder.BigEndian, IntegralType.Int64);
 
-        table.SetDefaultFunc(B2B_UInt8_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt8, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_Int8_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int8, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_UInt16_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt16, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_Int16_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int16, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_UInt32_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt32, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_Int32_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int32, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_UInt64_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt64, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_Int64_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int64, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_Float_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Float, ByteOrder.BigEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2B_Double_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Double, ByteOrder.BigEndian, IntegralType.Int64);
+    internal static StandardConversionDelegates Resolve(
+        in IntegralFormat input)
+    {
+        return input.ValueType switch
+        {
+            IntegralType.UInt8 => new(B2B_UInt8_To_Int64, B2B_UInt8_To_Int64_Default),
+            IntegralType.Int8 => new(B2B_Int8_To_Int64, B2B_Int8_To_Int64_Default),
+            IntegralType.UInt16 => new(B2B_UInt16_To_Int64, B2B_UInt16_To_Int64_Default),
+            IntegralType.Int16 => new(B2B_Int16_To_Int64, B2B_Int16_To_Int64_Default),
+            IntegralType.UInt32 => new(B2B_UInt32_To_Int64, B2B_UInt32_To_Int64_Default),
+            IntegralType.Int32 => new(B2B_Int32_To_Int64, B2B_Int32_To_Int64_Default),
+            IntegralType.UInt64 => new(B2B_UInt64_To_Int64, B2B_UInt64_To_Int64_Default),
+            IntegralType.Int64 => new(B2B_Int64_To_Int64, B2B_Int64_To_Int64_Default),
+            IntegralType.Float => new(B2B_Float_To_Int64, B2B_Float_To_Int64_Default),
+            IntegralType.Double => new(B2B_Double_To_Int64, B2B_Double_To_Int64_Default),
+            _ => throw new ArgumentOutOfRangeException(nameof(input)),
+        };
     }
 
     public static long B2B_UInt8_To_Int64(
@@ -88,7 +83,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.UInt8);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -177,7 +172,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.Int8);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -266,7 +261,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.UInt16);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -355,7 +350,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.Int16);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -444,7 +439,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.UInt32);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -533,7 +528,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.Int32);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -622,7 +617,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.UInt64);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -711,7 +706,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.Int64);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -785,7 +780,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.Float);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)
@@ -878,7 +873,7 @@ internal static unsafe class B2BConvertToInt64
         Debug.Assert(output.Format.ByteOrder.Resolve() == ByteOrder.BigEndian);
         Debug.Assert(input.IntegralValueType == IntegralType.Double);
         Debug.Assert(output.IntegralValueType == IntegralType.Int64);
-                _ = context;
+        _ = context;
 
         long n = ConversionCount.Effective(input, output, valuesCount);
         if (n == 0)

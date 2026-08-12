@@ -1,17 +1,17 @@
 using System.Diagnostics;
-// InterleavedReaderContext / InterleavedWriterContext live in parent Conversion namespace.
+// Interleaved*Context types live in parent Conversion namespace.
 
 namespace DotBase.Integral.Conversion.Internal.Interleaved;
 
 
 /// <summary>
-/// Resolves reader/writer layout from <see cref="IntegralSpanConversionFunc"/> context
+/// Resolves reader/writer/transfer layout from <see cref="IntegralSpanConversionFunc"/> context
 /// and computes the effective lane-transfer count.
 /// </summary>
 internal static class InterleavedAccess
 {
     /// <summary>
-    /// Interprets <paramref name="context"/> as reader or writer layout.
+    /// Interprets <paramref name="context"/> as reader, writer, or transfer layout.
     /// Returns effective lane count (0 if none). Asserts on invalid context/layout.
     /// </summary>
     internal static long Resolve(
@@ -62,9 +62,31 @@ internal static class InterleavedAccess
                 writer.OutputBlockCapacity);
         }
 
+        if (context is InterleavedTransferContext transfer)
+        {
+            Debug.Assert(transfer.InputBlockCapacity > 1);
+            Debug.Assert(transfer.OutputBlockCapacity > 1);
+            Debug.Assert(transfer.InputBlockCapacity == input.Format.BlockCapacity);
+            Debug.Assert(transfer.OutputBlockCapacity == output.Format.BlockCapacity);
+            Debug.Assert((uint)transfer.InputValueIndex < (uint)transfer.InputBlockCapacity);
+            Debug.Assert((uint)transfer.OutputValueIndex < (uint)transfer.OutputBlockCapacity);
+
+            srcStride = transfer.InputBlockCapacity;
+            dstStride = transfer.OutputBlockCapacity;
+            srcLane = transfer.InputValueIndex;
+            dstLane = transfer.OutputValueIndex;
+
+            return ConversionCount.EffectiveInterleavedTransfer(
+                input,
+                output,
+                laneCount,
+                transfer.InputBlockCapacity,
+                transfer.OutputBlockCapacity);
+        }
+
         Debug.Assert(
             false,
-            "Interleaved conversion requires InterleavedReaderContext or InterleavedWriterContext.");
+            "Interleaved conversion requires InterleavedReaderContext, InterleavedWriterContext, or InterleavedTransferContext.");
         srcStride = 1;
         dstStride = 1;
         srcLane = 0;

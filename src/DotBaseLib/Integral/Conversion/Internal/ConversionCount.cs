@@ -135,4 +135,50 @@ internal static class ConversionCount
 
         return n;
     }
+
+    /// <summary>
+    /// Lane-transfer count for interleaved transfer: complete input and output
+    /// blocks only. <paramref name="laneCount"/> is the requested number of lanes
+    /// (one per complete block pair).
+    /// </summary>
+    internal static long EffectiveInterleavedTransfer(
+        in IntegralSpan input,
+        in IntegralSpan output,
+        long laneCount,
+        int inputBlockCapacity,
+        int outputBlockCapacity)
+    {
+        Debug.Assert(inputBlockCapacity > 1);
+        Debug.Assert(outputBlockCapacity > 1);
+
+        if (laneCount <= 0)
+        {
+            return 0;
+        }
+
+        long completeInputBlocks = input.ValueCount / inputBlockCapacity;
+        if (completeInputBlocks <= 0)
+        {
+            return 0;
+        }
+
+        long completeOutputBlocks = output.ValueCount / outputBlockCapacity;
+        if (completeOutputBlocks <= 0)
+        {
+            return 0;
+        }
+
+        long n = laneCount;
+        if (n > completeInputBlocks)
+        {
+            n = completeInputBlocks;
+        }
+
+        if (n > completeOutputBlocks)
+        {
+            n = completeOutputBlocks;
+        }
+
+        return n;
+    }
 }

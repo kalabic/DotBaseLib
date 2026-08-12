@@ -78,14 +78,14 @@ internal readonly struct IntegralValueFormat
         // ByteOrder.Undefined (and other invalid orders) may be packed here;
         // IntegralFormat.Validate rejects them at use sites.
         Debug.Assert(valueType.IsValid());
-        Debug.Assert(valueSize >= 0);
-
         // Empty sentinel: size 0 with None.
         Debug.Assert(valueSize > 0 || valueType == IntegralType.None);
 
-        if (valueType.IsValid() && valueSize >= 0)
+        // Preserve invalid sizes so IntegralFormat validation can diagnose the
+        // descriptor instead of observing a normalized empty sentinel.
+        _valueSize = valueSize;
+        if (valueType.IsValid())
         {
-            _valueSize = valueSize;
             uint packedByteOrder = ((uint)byteOrder.TrimUndefined()) & BYTEORDER_MASK;
             uint packedValueType = ((uint)valueType.TrimUndefined() << 8) & VALUETYPE_MASK;
             _packType = (ushort)(packedByteOrder | packedValueType);
@@ -100,38 +100,19 @@ internal readonly struct IntegralValueFormat
         }
         else
         {
-            _valueSize = 0;
             _packType = 0;
             _extended = 0;
         }
     }
 
     public IntegralValueFormat(ByteOrder byteOrder, int valueSize, sbyte extendedType = -1, sbyte extendedId = -1)
-    {
-        Debug.Assert(valueSize > 0);
-
-        if (valueSize > 0)
-        {
-            _valueSize = valueSize;
-            uint packedByteOrder = ((uint)byteOrder.TrimUndefined()) & BYTEORDER_MASK;
-            uint packedValueType = ((uint)IntegralType.None << 8) & VALUETYPE_MASK;
-            _packType = (ushort)(packedByteOrder | packedValueType);
-
-            uint packedExtendedType = (extendedType >= 0) ? (uint)(extendedType << 8) : 0;
-            packedExtendedType = (extendedType >= 0) ? (packedExtendedType | EXTENDED_TYPE_FLAG) : 0;
-
-            uint packedExtendedId = (extendedId >= 0) ? (uint)extendedId : 0;
-            packedExtendedId = (extendedId >= 0) ? (packedExtendedId | EXTENDED_ID_FLAG) : 0;
-
-            _extended = (ushort)(packedExtendedType | packedExtendedId);
-        }
-        else
-        {
-            _valueSize = 0;
-            _packType = 0;
-            _extended = 0;
-        }
-    }
+        : this(
+            byteOrder,
+            IntegralType.None,
+            valueSize,
+            extendedType,
+            extendedId)
+    { }
 
     public bool IsEmpty()
     {

@@ -83,7 +83,7 @@ public readonly unsafe struct IntegralSpan
 
     public IntegralSpan()
     {
-        Ptr = IntegralPtr.NULL;
+        Ptr = IntegralPtr.Null;
         Length = 0;
         Offset = 0;
         Capacity = IntegralCapacity.Zero;
@@ -389,11 +389,6 @@ public readonly unsafe struct IntegralSpan
         in IntegralFormat format)
     {
         IntegralSpan slice = GetBlockSpan(range);
-        if (slice.Length == 0)
-        {
-            return Empty;
-        }
-
         return new IntegralSpan(
             slice.BytePtr,
             slice.Offset,
@@ -522,22 +517,13 @@ public readonly unsafe struct IntegralSpan
 
     private IntegralSpan ChangeFormatCore(in IntegralFormat format)
     {
-        if (Length == 0)
-        {
-            return Empty;
-        }
-
         return new IntegralSpan(BytePtr, Offset, Length, format);
     }
 
     private IntegralSpan ChangeFormatCheckedCore(in IntegralFormat format)
     {
         IntegralSpan changed = ChangeFormatCore(format);
-        if (changed.Length != 0)
-        {
-            changed.Validate();
-        }
-
+        changed.Validate();
         return changed;
     }
 

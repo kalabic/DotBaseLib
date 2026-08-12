@@ -10,9 +10,8 @@ namespace DotBase.Integral;
 /// Construction does not fully validate; call <see cref="Validate"/> or
 /// <see cref="IsValid"/> when the format is used.
 /// <para>
-/// This type is fully unmanaged (layout fields plus three
-/// <see cref="IntegralConversionPolicy"/> slots for contiguous,
-/// interleaved-reader, and interleaved-writer paths).
+/// This type is fully unmanaged. Its conversion policy stores one process-local
+/// registry index covering contiguous, interleaved, and planar paths.
 /// </para>
 /// </summary>
 public readonly struct IntegralFormat

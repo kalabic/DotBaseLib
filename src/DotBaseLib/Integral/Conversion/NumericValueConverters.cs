@@ -1,197 +1,139 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using DotBase.Integral.Conversion.Internal;
 using DotBase.Integral.Conversion.Numeric.Defaults;
+using System.Diagnostics;
 
 namespace DotBase.Integral.Conversion;
 
 
 /// <summary>
-/// Scalar numeric conversion delegate table (architectural twin of the structural
-/// <c>StandardDelegateTable</c>): provides one concrete
-/// <c>Convert{Src}To{Dst}_Delegate</c> per integral type pair.
-/// <para>
-/// Built at construction and then immutable from the public surface. Registration
-/// is only available through the internal table interface during construction / build.
-/// </para>
-/// <para>
-/// Each slot is exposed as a non-managed <see cref="GCHandle"/> address
-/// (<see cref="nint"/>) for storage on <see cref="Integral.IntegralConversionHandle"/>.
-/// The table also exposes <see cref="SelfHandle"/> so
-/// <see cref="IntegralConversionPolicy"/> can reference this instance without a
-/// managed field on <see cref="IntegralFormat"/>.
-/// </para>
-/// <para>
-/// <b>Dispose:</b> do not dispose a table while any live
-/// <see cref="IntegralFormat"/> / conversion handle still holds its
-/// <see cref="SelfHandle"/> or slot handles.
-/// </para>
+/// Immutable scalar numeric conversion delegate table containing optional custom
+/// overrides. Unmodified slots share lazily resolved built-in converters. Managed
+/// delegates are retained directly; when the table is attached to a policy, the
+/// process-lifetime policy registry roots the table.
 /// </summary>
 public sealed class NumericValueConverters
-    : INumericValueDelegateTable, IDisposable
+    : INumericValueDelegateTable
 {
-    /// <summary>10 source types × 10 destination types.</summary>
+    /// <summary>10 source types x 10 destination types.</summary>
     public const int TableSize = 10 * 10;
 
-    /// <summary>Default instance with default math baked in.</summary>
+    /// <summary>Default instance backed by lazily resolved built-in converters.</summary>
     public static NumericValueConverters Default { get; } = CreateDefault();
 
-    private static NumericValueConverters CreateDefault()
-    {
-        var table = new NumericValueConverters();
-        INumericValueDelegateTable registration = table;
-        DefaultNumericValueConvertersReg.AddToTable(registration);
-        table.AssertTableFullyRegistered();
-        table._isFrozen = true;
-        return table;
-    }
+    private readonly Delegate?[] _overrides = new Delegate?[TableSize];
 
-    /// <summary>GCHandle.ToIntPtr per slot; zero if empty. Roots the managed converter.</summary>
-    private readonly nint[] _converterHandles;
+    private readonly nint[] _converterHandles = new nint[TableSize];
 
-    /// <summary>GCHandle to this instance for <see cref="IntegralConversionPolicy"/>.</summary>
-    private readonly nint _selfHandle;
-
-    /// <summary>Cached handle-factory GCHandles for <see cref="IntegralConversionPolicy.FromValueConverters"/>.</summary>
-    private nint _cachedSpanHandleFactory;
-    private nint _cachedReaderHandleFactory;
-    private nint _cachedWriterHandleFactory;
-
+    // Zero means no registry entry has been requested. Positive values are
+    // process-lifetime policy indexes.
+    private int _policyIndex;
     private bool _isFrozen;
-    private bool _disposed;
 
     private NumericValueConverters()
     {
-        _converterHandles = new nint[TableSize];
-        _selfHandle = GCHandle.ToIntPtr(GCHandle.Alloc(this, GCHandleType.Normal));
     }
 
-    /// <summary>
-    /// Non-managed <see cref="GCHandle"/> address that roots this table instance.
-    /// Used by <see cref="IntegralConversionPolicy.FromValueConverters"/>.
-    /// </summary>
-    public nint SelfHandle
+    private static NumericValueConverters CreateDefault()
     {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return _selfHandle;
-        }
-    }
-
-    /// <summary>
-    /// Creates a table instance filled with default scalar converters, then applies
-    /// <paramref name="configure"/> overrides via the registration surface.
-    /// The returned instance is frozen (immutable).
-    /// </summary>
-    public static NumericValueConverters Create(Action<INumericValueDelegateTable> configure)
-    {
-        ArgumentNullException.ThrowIfNull(configure);
-
-        var table = new NumericValueConverters();
-        INumericValueDelegateTable registration = table;
-        DefaultNumericValueConvertersReg.AddToTable(registration);
-        configure(registration);
-        table.AssertTableFullyRegistered();
-        table._isFrozen = true;
+        NumericValueConverters table = new();
+        table.Freeze();
         return table;
     }
 
     /// <summary>
-    /// Returns the concrete scalar converter for <paramref name="inputType"/> →
-    /// <paramref name="outputType"/>. Runtime type is the matching
-    /// <c>Convert{Src}To{Dst}_Delegate</c>.
+    /// Creates a table containing the configured scalar converter overrides and
+    /// returns the frozen table. Unmodified slots use shared built-in converters.
+    /// </summary>
+    public static NumericValueConverters Create(
+        Action<INumericValueDelegateTable> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        NumericValueConverters table = new();
+        INumericValueDelegateTable registration = table;
+        configure(registration);
+        table.Freeze();
+        return table;
+    }
+
+    /// <summary>
+    /// Returns the scalar converter for <paramref name="inputType"/> to
+    /// <paramref name="outputType"/>.
     /// </summary>
     public Delegate GetConverter(IntegralType inputType, IntegralType outputType)
     {
-        nint handle = GetConverterHandle(inputType, outputType);
-        object? target = GCHandle.FromIntPtr(handle).Target;
-        Debug.Assert(target is Delegate);
-        return (Delegate)target!;
-    }
-
-    /// <summary>
-    /// Non-managed <see cref="GCHandle"/> address for the scalar converter of the given
-    /// type pair. Safe to store on <see cref="Integral.IntegralConversionHandle"/> as long as
-    /// this table instance remains alive (it owns and roots the handle).
-    /// </summary>
-    public nint GetConverterFunctionPointer(IntegralType inputType, IntegralType outputType)
-        => GetConverterHandle(inputType, outputType);
-
-    /// <summary>
-    /// Process-lifetime factory for contiguous handles using this table's scalar converters.
-    /// Cached so repeated <see cref="IntegralConversionPolicy.FromValueConverters"/> share slots.
-    /// </summary>
-    internal nint GetOrCreateSpanHandleFactory()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_cachedSpanHandleFactory == 0)
-        {
-            IntegralSpanConversionHandleFunc factory =
-                InternalConversionDelegates.MakeSpanHandle_WithConverters(this);
-            _cachedSpanHandleFactory = ConversionPolicySlot.AllocFactory(factory);
-        }
-
-        return _cachedSpanHandleFactory;
-    }
-
-    internal nint GetOrCreateReaderHandleFactory()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_cachedReaderHandleFactory == 0)
-        {
-            InterleavedReaderConversionHandleFunc factory =
-                InternalConversionDelegates.MakeReaderHandle_WithConverters(this);
-            _cachedReaderHandleFactory = ConversionPolicySlot.AllocFactory(factory);
-        }
-
-        return _cachedReaderHandleFactory;
-    }
-
-    internal nint GetOrCreateWriterHandleFactory()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_cachedWriterHandleFactory == 0)
-        {
-            InterleavedWriterConversionHandleFunc factory =
-                InternalConversionDelegates.MakeWriterHandle_WithConverters(this);
-            _cachedWriterHandleFactory = ConversionPolicySlot.AllocFactory(factory);
-        }
-
-        return _cachedWriterHandleFactory;
-    }
-
-    private nint GetConverterHandle(IntegralType inputType, IntegralType outputType)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         int index = TableIndex(inputType, outputType);
-        Debug.Assert(index >= 0 && index < TableSize);
-        nint handle = _converterHandles[index];
-        Debug.Assert(handle != 0, $"Numeric converter slot {index} is empty.");
-        return handle;
+        Delegate? converter = Volatile.Read(ref _overrides[index]);
+        return converter ?? DefaultNumericValueDelegateTable.Instance.GetConverter(index, inputType, outputType);
     }
 
-    private static int TableIndex(IntegralType inputType, IntegralType outputType)
+    /// <summary>
+    /// NumericValueConverters owns and caches each GCHandle.<br/>
+    /// This is safe only because registered converter tables are process-lifetime.
+    /// </summary>
+    /// <param name="inputType"></param>
+    /// <param name="outputType"></param>
+    /// <returns></returns>
+    internal nint GetConverterHandle(IntegralType inputType, IntegralType outputType)
+    {
+        int index = TableIndex(inputType, outputType);
+
+        nint existing = Volatile.Read(ref _converterHandles[index]);
+        if (existing != 0)
+        {
+            return existing;
+        }
+
+        return DelegateHandle.GetOrAllocate(
+            ref _converterHandles[index],
+            GetConverter(inputType, outputType));
+    }
+
+    internal int GetOrRegisterPolicyIndex()
+    {
+        EnsureFrozenForPolicy();
+
+        int existingIndex = Volatile.Read(ref _policyIndex);
+        if (existingIndex != 0)
+        {
+            return existingIndex;
+        }
+
+        int registeredIndex =
+            ConversionPolicyRegistry.RegisterValueConverters(this);
+        existingIndex = Interlocked.CompareExchange(
+            ref _policyIndex,
+            registeredIndex,
+            comparand: 0);
+        return existingIndex == 0 ? registeredIndex : existingIndex;
+    }
+
+    internal void EnsureFrozenForPolicy()
+    {
+        if (!Volatile.Read(ref _isFrozen))
+        {
+            throw new InvalidOperationException(
+                "Numeric converters cannot be registered before the table is frozen.");
+        }
+    }
+
+    private void Freeze()
+    {
+        Volatile.Write(ref _isFrozen, true);
+    }
+
+    private static int TableIndex(
+        IntegralType inputType,
+        IntegralType outputType)
     {
         Debug.Assert(inputType != IntegralType.None);
         Debug.Assert(outputType != IntegralType.None);
         Debug.Assert((int)inputType >= 1 && (int)inputType <= 10);
         Debug.Assert((int)outputType >= 1 && (int)outputType <= 10);
 
-        int in_type = (int)inputType - 1;
-        int out_type = (int)outputType - 1;
-        return in_type + 10 * out_type;
-    }
-
-    [Conditional("DEBUG")]
-    private void AssertTableFullyRegistered()
-    {
-        for (int i = 0; i < TableSize; ++i)
-        {
-            Debug.Assert(
-                _converterHandles[i] != 0,
-                $"Numeric converter table slot {i} is still empty.");
-        }
+        int inputIndex = (int)inputType - 1;
+        int outputIndex = (int)outputType - 1;
+        return inputIndex + 10 * outputIndex;
     }
 
     void INumericValueDelegateTable.SetConverter(
@@ -199,7 +141,7 @@ public sealed class NumericValueConverters
         IntegralType inputType,
         IntegralType outputType)
     {
-        if (_isFrozen)
+        if (Volatile.Read(ref _isFrozen))
         {
             throw new InvalidOperationException(
                 "NumericValueConverters table is frozen and cannot be modified.");
@@ -208,80 +150,18 @@ public sealed class NumericValueConverters
         ArgumentNullException.ThrowIfNull(converter);
         int index = TableIndex(inputType, outputType);
         Debug.Assert(index >= 0 && index < TableSize);
-
-        // Replace: free previous handle if this slot was already set (override path).
-        nint existing = _converterHandles[index];
-        if (existing != 0)
-        {
-            GCHandle.FromIntPtr(existing).Free();
-        }
-
-        GCHandle gch = GCHandle.Alloc(converter, GCHandleType.Normal);
-        _converterHandles[index] = GCHandle.ToIntPtr(gch);
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        FreeHandles();
-        _disposed = true;
-        GC.SuppressFinalize(this);
-    }
-
-    ~NumericValueConverters()
-    {
-        // Best-effort free if Dispose was skipped (not for Default, which lives process-wide).
-        if (_disposed || ReferenceEquals(this, Default))
-        {
-            return;
-        }
-
-        FreeHandles();
-    }
-
-    private void FreeHandles()
-    {
-        for (int i = 0; i < TableSize; ++i)
-        {
-            nint existing = _converterHandles[i];
-            if (existing != 0)
-            {
-                try
-                {
-                    GCHandle.FromIntPtr(existing).Free();
-                }
-                catch
-                {
-                    // Dispose/finalizer path: ignore.
-                }
-
-                _converterHandles[i] = 0;
-            }
-        }
-
-        if (_selfHandle != 0)
-        {
-            try
-            {
-                GCHandle.FromIntPtr(_selfHandle).Free();
-            }
-            catch
-            {
-                // Dispose/finalizer path: ignore.
-            }
-        }
+        Volatile.Write(ref _overrides[index], converter);
     }
 }
 
 
 /// <summary>
-/// Registration surface for <see cref="NumericValueConverters"/> (init / build path only).
+/// Registration surface for <see cref="NumericValueConverters"/> during creation.
 /// </summary>
 public interface INumericValueDelegateTable
 {
-    void SetConverter(Delegate converter, IntegralType inputType, IntegralType outputType);
+    void SetConverter(
+        Delegate converter,
+        IntegralType inputType,
+        IntegralType outputType);
 }

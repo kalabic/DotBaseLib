@@ -8,29 +8,24 @@ namespace DotBase.Integral.Conversion.Internal.Interleaved.L2L;
 
 internal static unsafe class L2LConvertToDouble
 {
-    internal static void AddToTable(IConversionDelegateTable table)
-    {
-        table.SetCustomFunc(L2L_UInt8_To_Double, ByteOrder.LittleEndian, IntegralType.UInt8, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_Int8_To_Double, ByteOrder.LittleEndian, IntegralType.Int8, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_UInt16_To_Double, ByteOrder.LittleEndian, IntegralType.UInt16, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_Int16_To_Double, ByteOrder.LittleEndian, IntegralType.Int16, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_UInt32_To_Double, ByteOrder.LittleEndian, IntegralType.UInt32, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_Int32_To_Double, ByteOrder.LittleEndian, IntegralType.Int32, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_UInt64_To_Double, ByteOrder.LittleEndian, IntegralType.UInt64, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_Int64_To_Double, ByteOrder.LittleEndian, IntegralType.Int64, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_Float_To_Double, ByteOrder.LittleEndian, IntegralType.Float, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetCustomFunc(L2L_Double_To_Double, ByteOrder.LittleEndian, IntegralType.Double, ByteOrder.LittleEndian, IntegralType.Double);
 
-        table.SetDefaultFunc(L2L_UInt8_To_Double_Default, ByteOrder.LittleEndian, IntegralType.UInt8, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_Int8_To_Double_Default, ByteOrder.LittleEndian, IntegralType.Int8, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_UInt16_To_Double_Default, ByteOrder.LittleEndian, IntegralType.UInt16, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_Int16_To_Double_Default, ByteOrder.LittleEndian, IntegralType.Int16, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_UInt32_To_Double_Default, ByteOrder.LittleEndian, IntegralType.UInt32, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_Int32_To_Double_Default, ByteOrder.LittleEndian, IntegralType.Int32, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_UInt64_To_Double_Default, ByteOrder.LittleEndian, IntegralType.UInt64, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_Int64_To_Double_Default, ByteOrder.LittleEndian, IntegralType.Int64, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_Float_To_Double_Default, ByteOrder.LittleEndian, IntegralType.Float, ByteOrder.LittleEndian, IntegralType.Double);
-        table.SetDefaultFunc(L2L_Double_To_Double_Default, ByteOrder.LittleEndian, IntegralType.Double, ByteOrder.LittleEndian, IntegralType.Double);
+    internal static InterleavedConversionDelegates Resolve(
+        in IntegralFormat input)
+    {
+        return input.ValueType switch
+        {
+            IntegralType.UInt8 => new(L2L_UInt8_To_Double, L2L_UInt8_To_Double_Default),
+            IntegralType.Int8 => new(L2L_Int8_To_Double, L2L_Int8_To_Double_Default),
+            IntegralType.UInt16 => new(L2L_UInt16_To_Double, L2L_UInt16_To_Double_Default),
+            IntegralType.Int16 => new(L2L_Int16_To_Double, L2L_Int16_To_Double_Default),
+            IntegralType.UInt32 => new(L2L_UInt32_To_Double, L2L_UInt32_To_Double_Default),
+            IntegralType.Int32 => new(L2L_Int32_To_Double, L2L_Int32_To_Double_Default),
+            IntegralType.UInt64 => new(L2L_UInt64_To_Double, L2L_UInt64_To_Double_Default),
+            IntegralType.Int64 => new(L2L_Int64_To_Double, L2L_Int64_To_Double_Default),
+            IntegralType.Float => new(L2L_Float_To_Double, L2L_Float_To_Double_Default),
+            IntegralType.Double => new(L2L_Double_To_Double, L2L_Double_To_Double_Default),
+            _ => throw new ArgumentOutOfRangeException(nameof(input)),
+        };
     }
 
     public static long L2L_UInt8_To_Double(

@@ -1,13 +1,243 @@
 using DotBase.Buffers;
 using DotBase.Integral;
 using DotBase.Integral.Conversion;
+using DotBase.Integral.Conversion.Internal.Interleaved;
+using DotBase.Integral.Conversion.Internal.Standard;
 using DotBase.Integral.Conversion.Numeric;
+using DotBase.Integral.Conversion.Numeric.Defaults;
+using System.Reflection;
 
 namespace DotBaseLib.Tests;
 
 
 public unsafe class ConversionDelegateTableTests
 {
+    [Fact]
+    public void NumericTable_LazilyPublishesOneDefaultDelegatePerSlot()
+    {
+        DefaultNumericValueDelegateTable table = CreateDefaultNumericTable();
+        const IntegralType inputType = IntegralType.Int16;
+        const IntegralType outputType = IntegralType.Double;
+        int tableIndex = NumericTableIndex(inputType, outputType);
+
+        Assert.Equal(0, CountResolvedNumericSlots(table));
+
+        Delegate[] converters = new Delegate[128];
+        Parallel.For(0, converters.Length, index =>
+        {
+            converters[index] = table.GetConverter(
+                tableIndex,
+                inputType,
+                outputType);
+        });
+
+        Assert.Equal(1, CountResolvedNumericSlots(table));
+        Delegate expected = converters[0];
+        foreach (Delegate converter in converters)
+        {
+            Assert.Same(expected, converter);
+        }
+    }
+
+    [Fact]
+    public void NumericTable_ResolvesEveryTypeSlot()
+    {
+        DefaultNumericValueDelegateTable table = CreateDefaultNumericTable();
+        IntegralType[] valueTypes =
+            Enum.GetValues<IntegralType>()
+                .Where(type => type != IntegralType.None)
+                .ToArray();
+
+        foreach (IntegralType inputType in valueTypes)
+        foreach (IntegralType outputType in valueTypes)
+        {
+            Assert.NotNull(table.GetConverter(
+                NumericTableIndex(inputType, outputType),
+                inputType,
+                outputType));
+        }
+
+        Assert.Equal(
+            NumericValueConverters.TableSize,
+            CountResolvedNumericSlots(table));
+    }
+
+    [Fact]
+    public void NumericValueConverters_StoresOnlyConfiguredOverrides()
+    {
+        ConvertInt16ToDouble_Delegate custom = value => value + 0.5;
+        NumericValueConverters table = NumericValueConverters.Create(registration =>
+            registration.SetConverter(
+                custom,
+                IntegralType.Int16,
+                IntegralType.Double));
+
+        Assert.Equal(1, CountNumericOverrides(table));
+        Assert.Same(
+            custom,
+            table.GetConverter(IntegralType.Int16, IntegralType.Double));
+        Assert.Same(
+            NumericValueConverters.Default.GetConverter(
+                IntegralType.UInt32,
+                IntegralType.Float),
+            table.GetConverter(IntegralType.UInt32, IntegralType.Float));
+        Assert.Equal(1, CountNumericOverrides(table));
+    }
+
+    [Fact]
+    public void StandardTable_LazilyPublishesOneDelegatePairPerSlot()
+    {
+        StandardDelegateTable table = CreateStandardTable();
+        IntegralFormat input = new(
+            IntegralType.Int16,
+            1,
+            ByteOrder.BigEndian);
+        IntegralFormat output = new(
+            IntegralType.Double,
+            1,
+            ByteOrder.LittleEndian);
+
+        Assert.Equal(0, CountResolvedStandardSlots(table));
+
+        IntegralConversionHandle[] handles =
+            new IntegralConversionHandle[128];
+        Parallel.For(0, handles.Length, index =>
+        {
+            handles[index] = (index & 1) == 0
+                ? table.GetDefaultHandle(input, output)
+                : table.GetCustomHandle(
+                    input,
+                    output,
+                    NumericValueConverters.Default);
+        });
+
+        Assert.Equal(1, CountResolvedStandardSlots(table));
+        nint expectedDefault =
+            table.GetDefaultHandle(input, output)._func;
+        nint expectedCustom =
+            table.GetCustomHandle(
+                input,
+                output,
+                NumericValueConverters.Default)._func;
+        for (int i = 0; i < handles.Length; ++i)
+        {
+            Assert.Equal(
+                (i & 1) == 0 ? expectedDefault : expectedCustom,
+                handles[i]._func);
+        }
+    }
+
+    [Fact]
+    public void StandardTable_ResolvesEveryEndianAndTypeSlot()
+    {
+        StandardDelegateTable table = CreateStandardTable();
+        ByteOrder[] byteOrders =
+        [
+            ByteOrder.LittleEndian,
+            ByteOrder.BigEndian,
+        ];
+        IntegralType[] valueTypes =
+            Enum.GetValues<IntegralType>()
+                .Where(type => type != IntegralType.None)
+                .ToArray();
+
+        foreach (ByteOrder inputOrder in byteOrders)
+        foreach (ByteOrder outputOrder in byteOrders)
+        foreach (IntegralType inputType in valueTypes)
+        foreach (IntegralType outputType in valueTypes)
+        {
+            IntegralFormat input = new(inputType, 1, inputOrder);
+            IntegralFormat output = new(outputType, 1, outputOrder);
+
+            Assert.False(table.GetDefaultHandle(input, output).IsNull);
+            Assert.False(table.GetCustomHandle(
+                input,
+                output,
+                NumericValueConverters.Default).IsNull);
+        }
+
+        Assert.Equal(
+            StandardDelegateTable.TableSize,
+            CountResolvedStandardSlots(table));
+    }
+
+    [Fact]
+    public void InterleavedTable_LazilyPublishesOneDelegatePairPerSlot()
+    {
+        InterleavedDelegateTable table = CreateInterleavedTable();
+        IntegralFormat input = new(
+            IntegralType.Int16,
+            2,
+            ByteOrder.BigEndian);
+        IntegralFormat output = new(
+            IntegralType.Double,
+            1,
+            ByteOrder.LittleEndian);
+
+        Assert.Equal(0, CountResolvedInterleavedSlots(table));
+
+        IntegralConversionHandle[] handles =
+            new IntegralConversionHandle[128];
+        Parallel.For(0, handles.Length, index =>
+        {
+            handles[index] = (index & 1) == 0
+                ? table.GetDefaultHandle(input, output)
+                : table.GetCustomHandle(
+                    input,
+                    output,
+                    NumericValueConverters.Default);
+        });
+
+        Assert.Equal(1, CountResolvedInterleavedSlots(table));
+        nint expectedDefault =
+            table.GetDefaultHandle(input, output)._func;
+        nint expectedCustom =
+            table.GetCustomHandle(
+                input,
+                output,
+                NumericValueConverters.Default)._func;
+        for (int i = 0; i < handles.Length; ++i)
+        {
+            Assert.Equal(
+                (i & 1) == 0 ? expectedDefault : expectedCustom,
+                handles[i]._func);
+        }
+    }
+
+    [Fact]
+    public void InterleavedTable_ResolvesEveryEndianAndTypeSlot()
+    {
+        InterleavedDelegateTable table = CreateInterleavedTable();
+        ByteOrder[] byteOrders =
+        [
+            ByteOrder.LittleEndian,
+            ByteOrder.BigEndian,
+        ];
+        IntegralType[] valueTypes =
+            Enum.GetValues<IntegralType>()
+                .Where(type => type != IntegralType.None)
+                .ToArray();
+
+        foreach (ByteOrder inputOrder in byteOrders)
+        foreach (ByteOrder outputOrder in byteOrders)
+        foreach (IntegralType inputType in valueTypes)
+        foreach (IntegralType outputType in valueTypes)
+        {
+            IntegralFormat input = new(inputType, 2, inputOrder);
+            IntegralFormat output = new(outputType, 1, outputOrder);
+
+            Assert.False(table.GetDefaultHandle(input, output).IsNull);
+            Assert.False(table.GetCustomHandle(
+                input,
+                output,
+                NumericValueConverters.Default).IsNull);
+        }
+
+        Assert.Equal(
+            InterleavedDelegateTable.TableSize,
+            CountResolvedInterleavedSlots(table));
+    }
+
     [Fact]
     public void UInt8ToUInt8_L2L_CopiesBytesAndClampsCount()
     {
@@ -330,8 +560,8 @@ public unsafe class ConversionDelegateTableTests
         IntegralConversionHandle defaultHandle = default;
         IntegralConversionHandle viaNew = new();
         IntegralConversionHandle explicitNull = new IntegralConversionHandle(
-            func: null,
-            numericFunc: 0);
+            func: 0,
+            numericConverter: 0);
 
         Assert.True(defaultHandle.IsNull);
         Assert.True(viaNew.IsNull);
@@ -391,9 +621,9 @@ public unsafe class ConversionDelegateTableTests
             IntegralConversionHandle handle =
                 ConversionHandles.GetHandle(input.Format, output.Format);
             ConversionContext? ctx =
-                ConversionHandles.GetContext(handle, input.Format, output.Format);
+                ConversionHandles.GetContext(handle);
             Assert.NotNull(ctx);
-            long n = handle.Convert(input, output, count, ctx);
+            long n = ctx.Convert(input, output, count);
 
             Assert.Equal(count, n);
             for (int i = 0; i < count; ++i)
@@ -452,9 +682,9 @@ public unsafe class ConversionDelegateTableTests
             IntegralConversionHandle handle =
                 ConversionHandles.GetHandle(input.Format, output.Format);
             ConversionContext? ctx =
-                ConversionHandles.GetContext(handle, input.Format, output.Format);
+                ConversionHandles.GetContext(handle);
             Assert.NotNull(ctx);
-            long n = handle.Convert(input, output, count, ctx);
+            long n = ctx.Convert(input, output, count);
 
             Assert.Equal(count, n);
             for (int i = 0; i < count; ++i)
@@ -584,9 +814,9 @@ public unsafe class ConversionDelegateTableTests
             IntegralConversionHandle handle =
                 ConversionHandles.GetHandle(input.Format, output.Format);
             ConversionContext? ctx =
-                ConversionHandles.GetContext(handle, input.Format, output.Format);
+                ConversionHandles.GetContext(handle);
             Assert.NotNull(ctx);
-            long n = handle.Convert(input, output, count, ctx);
+            long n = ctx.Convert(input, output, count);
 
             Assert.Equal(count, n);
             for (int i = 0; i < count; ++i)
@@ -680,4 +910,100 @@ public unsafe class ConversionDelegateTableTests
         }
     }
 
+    private static StandardDelegateTable CreateStandardTable()
+    {
+        return (StandardDelegateTable)Activator.CreateInstance(
+            typeof(StandardDelegateTable),
+            nonPublic: true)!;
+    }
+
+    private static int CountResolvedStandardSlots(
+        StandardDelegateTable table)
+    {
+        FieldInfo field = typeof(StandardDelegateTable).GetField(
+            "_funcTable",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Array slots = (Array)field.GetValue(table)!;
+        int count = 0;
+        foreach (object? slot in slots)
+        {
+            if (slot is not null)
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
+    private static DefaultNumericValueDelegateTable CreateDefaultNumericTable()
+    {
+        return (DefaultNumericValueDelegateTable)Activator.CreateInstance(
+            typeof(DefaultNumericValueDelegateTable),
+            nonPublic: true)!;
+    }
+
+    private static int CountResolvedNumericSlots(
+        DefaultNumericValueDelegateTable table)
+    {
+        FieldInfo field = typeof(DefaultNumericValueDelegateTable).GetField(
+            "_converters",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return CountNonNullSlots((Array)field.GetValue(table)!);
+    }
+
+    private static int CountNumericOverrides(NumericValueConverters table)
+    {
+        FieldInfo field = typeof(NumericValueConverters).GetField(
+            "_overrides",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return CountNonNullSlots((Array)field.GetValue(table)!);
+    }
+
+    private static int CountNonNullSlots(Array slots)
+    {
+        int count = 0;
+        foreach (object? slot in slots)
+        {
+            if (slot is not null)
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
+    private static int NumericTableIndex(
+        IntegralType inputType,
+        IntegralType outputType)
+    {
+        return (int)inputType - 1 + 10 * ((int)outputType - 1);
+    }
+
+    private static InterleavedDelegateTable CreateInterleavedTable()
+    {
+        return (InterleavedDelegateTable)Activator.CreateInstance(
+            typeof(InterleavedDelegateTable),
+            nonPublic: true)!;
+    }
+
+    private static int CountResolvedInterleavedSlots(
+        InterleavedDelegateTable table)
+    {
+        FieldInfo field = typeof(InterleavedDelegateTable).GetField(
+            "_funcTable",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Array slots = (Array)field.GetValue(table)!;
+        int count = 0;
+        foreach (object? slot in slots)
+        {
+            if (slot is not null)
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
 }

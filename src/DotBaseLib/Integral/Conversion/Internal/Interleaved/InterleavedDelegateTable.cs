@@ -9,45 +9,16 @@ namespace DotBase.Integral.Conversion.Internal.Interleaved;
 
 
 /// <summary>
-/// Global conversion dispatch table. Built once at type initialization and then
-/// immutable from the public surface: registration is only available through the
-/// internal <see cref="IConversionDelegateTable"/> during construction.
+/// Global interleaved conversion dispatch table. Each immutable custom/default
+/// delegate-handle pair is resolved and published on first use of its exact
+/// endian/type slot.
 /// </summary>
 internal sealed class InterleavedDelegateTable
-    : IConversionDelegateTable
 {
     /// <summary>2 wire endians × 2 wire endians × 10 types × 10 types.</summary>
     public const int TableSize = 2 * 2 * 10 * 10;
 
-    public static InterleavedDelegateTable Instance { get; } = CreateInstance();
-
-    private static InterleavedDelegateTable CreateInstance()
-    {
-        var table = new InterleavedDelegateTable();
-        IConversionDelegateTable registration = table;
-
-        InterleavedL2LConversionFuncReg.AddToTable(registration);
-        InterleavedL2BConversionFuncReg.AddToTable(registration);
-        InterleavedB2LConversionFuncReg.AddToTable(registration);
-        InterleavedB2BConversionFuncReg.AddToTable(registration);
-
-        table.AssertTablesFullyRegistered();
-        return table;
-    }
-
-    [Conditional("DEBUG")]
-    private void AssertTablesFullyRegistered()
-    {
-        for (int i = 0; i < TableSize; ++i)
-        {
-            Debug.Assert(
-                !ReferenceEquals(_customFuncTable[i], NoopFunc),
-                $"Custom conversion table slot {i} is still Noop.");
-            Debug.Assert(
-                !ReferenceEquals(_defaultFuncTable[i], NoopFunc),
-                $"Default conversion table slot {i} is still Noop.");
-        }
-    }
+    public static InterleavedDelegateTable Instance { get; } = new();
 
     /// <summary>
     /// In order to create continuous range of keys starting with 0, enum values
@@ -91,35 +62,67 @@ internal sealed class InterleavedDelegateTable
         return in_bo + 2 * out_bo + 4 * (in_type + 10 * out_type);
     }
 
-    private readonly IntegralSpanConversionFunc[] _customFuncTable;
+    private readonly InterleavedConversionDelegates?[] _funcTable;
 
-    private readonly IntegralSpanConversionFunc[] _defaultFuncTable;
-
-    /// <summary>Single shared Noop instance used as the unregistered-slot sentinel.</summary>
-    private static readonly IntegralSpanConversionFunc NoopFunc = Noop;
+    private readonly object _resolveLock = new();
 
     private InterleavedDelegateTable()
     {
-        _customFuncTable = new IntegralSpanConversionFunc[TableSize];
-        _defaultFuncTable = new IntegralSpanConversionFunc[TableSize];
-        for (int i = 0; i < TableSize; ++i)
-        {
-            _customFuncTable[i] = NoopFunc;
-            _defaultFuncTable[i] = NoopFunc;
-        }
+        _funcTable = new InterleavedConversionDelegates?[TableSize];
     }
 
-    private static long Noop(
-        in IntegralSpan input,
-        in IntegralSpan output,
-        long valuesCount,
-        ConversionContext? context)
+    private static InterleavedConversionDelegates ResolveFunctions(
+        in IntegralFormat input,
+        in IntegralFormat output)
     {
-        _ = input;
-        _ = output;
-        _ = valuesCount;
-                _ = context;
-        return 0;
+        return input.ByteOrder.Resolve() switch
+        {
+            ByteOrder.LittleEndian => output.ByteOrder.Resolve() switch
+            {
+                ByteOrder.LittleEndian =>
+                    InterleavedL2LConversionFuncReg.Resolve(input, output),
+                ByteOrder.BigEndian =>
+                    InterleavedL2BConversionFuncReg.Resolve(input, output),
+                _ => throw new InvalidOperationException(
+                    "The output byte order cannot be resolved."),
+            },
+            ByteOrder.BigEndian => output.ByteOrder.Resolve() switch
+            {
+                ByteOrder.LittleEndian =>
+                    InterleavedB2LConversionFuncReg.Resolve(input, output),
+                ByteOrder.BigEndian =>
+                    InterleavedB2BConversionFuncReg.Resolve(input, output),
+                _ => throw new InvalidOperationException(
+                    "The output byte order cannot be resolved."),
+            },
+            _ => throw new InvalidOperationException(
+                "The input byte order cannot be resolved."),
+        };
+    }
+
+    private InterleavedConversionDelegates GetFunctions(
+        int index,
+        in IntegralFormat input,
+        in IntegralFormat output)
+    {
+        InterleavedConversionDelegates? functions =
+            Volatile.Read(ref _funcTable[index]);
+        if (functions is not null)
+        {
+            return functions;
+        }
+
+        lock (_resolveLock)
+        {
+            functions = _funcTable[index];
+            if (functions is null)
+            {
+                functions = ResolveFunctions(input, output);
+                Volatile.Write(ref _funcTable[index], functions);
+            }
+
+            return functions;
+        }
     }
 
     /// <summary>
@@ -128,8 +131,8 @@ internal sealed class InterleavedDelegateTable
     /// </summary>
     public IntegralConversionHandle GetDefaultHandle(in IntegralFormat input, in IntegralFormat output)
     {
-        IntegralSpanConversionFunc? func = GetDefaultFunc(input, output);
-        return new IntegralConversionHandle(func, numericFunc: 0, contextFactory: 0);
+        nint func = GetDefaultFunc(input, output);
+        return new IntegralConversionHandle(func);
     }
 
     /// <summary>
@@ -141,9 +144,13 @@ internal sealed class InterleavedDelegateTable
         NumericValueConverters numericTable)
     {
         ArgumentNullException.ThrowIfNull(numericTable);
-        IntegralSpanConversionFunc? func = GetCustomFunc(input, output);
-        nint converter = numericTable.GetConverterFunctionPointer(input.ValueType, output.ValueType);
-        return new IntegralConversionHandle(func, converter, contextFactory: 0);
+        nint func = GetCustomFunc(input, output);
+        nint converter = numericTable.GetConverterHandle(input.ValueType, output.ValueType);
+        Debug.Assert(converter != 0);
+        return new IntegralConversionHandle(
+            func,
+            converter,
+            output.ConversionPolicy);
     }
 
     /// <summary>Legacy alias for <see cref="GetDefaultHandle"/>.</summary>
@@ -158,69 +165,17 @@ internal sealed class InterleavedDelegateTable
         in IntegralFormat output)
         => GetDefaultHandle(input, output);
 
-    /// <summary>
-    /// Builds the table index from the given spans and returns the custom-policy conversion function.
-    /// </summary>
-    private IntegralSpanConversionFunc? GetCustomFunc(in IntegralSpan input, in IntegralSpan output)
+    private nint GetCustomFunc(in IntegralFormat input, in IntegralFormat output)
     {
         int index = TableIndex(input, output);
         Debug.Assert(index >= 0 && index < TableSize);
-        return _customFuncTable[index];
+        return GetFunctions(index, input, output).Custom;
     }
 
-    private IntegralSpanConversionFunc? GetCustomFunc(in IntegralFormat input, in IntegralFormat output)
+    private nint GetDefaultFunc(in IntegralFormat input, in IntegralFormat output)
     {
         int index = TableIndex(input, output);
         Debug.Assert(index >= 0 && index < TableSize);
-        return _customFuncTable[index];
-    }
-
-    /// <summary>
-    /// Builds the table index from the given spans and returns the default-policy conversion function.
-    /// </summary>
-    private IntegralSpanConversionFunc? GetDefaultFunc(in IntegralSpan input, in IntegralSpan output)
-    {
-        int index = TableIndex(input, output);
-        Debug.Assert(index >= 0 && index < TableSize);
-        return _defaultFuncTable[index];
-    }
-
-    private IntegralSpanConversionFunc? GetDefaultFunc(in IntegralFormat input, in IntegralFormat output)
-    {
-        int index = TableIndex(input, output);
-        Debug.Assert(index >= 0 && index < TableSize);
-        return _defaultFuncTable[index];
-    }
-
-    /// <summary>
-    /// Stores a custom-policy conversion function (invokes per-value converter delegates).
-    /// Available only through <see cref="IConversionDelegateTable"/> (init path).
-    /// </summary>
-    void IConversionDelegateTable.SetCustomFunc(
-        IntegralSpanConversionFunc func,
-        ByteOrder inputByteOrder,
-        IntegralType inputType,
-        ByteOrder outputByteOrder,
-        IntegralType outputType)
-    {
-        int index = TableIndex(inputByteOrder, inputType, outputByteOrder, outputType);
-        Debug.Assert(index >= 0 && index < TableSize);
-        _customFuncTable[index] = func;
-    }
-
-    /// <summary>
-    /// Stores a default-policy conversion function (built-in numeric rules).
-    /// Available only through <see cref="IConversionDelegateTable"/> (init path).
-    /// </summary>
-    void IConversionDelegateTable.SetDefaultFunc(
-        IntegralSpanConversionFunc func,
-        ByteOrder inputByteOrder,
-        IntegralType inputType,
-        ByteOrder outputByteOrder,
-        IntegralType outputType)
-    {
-        int index = TableIndex(inputByteOrder, inputType, outputByteOrder, outputType);
-        Debug.Assert(index >= 0 && index < TableSize);
-        _defaultFuncTable[index] = func;
+        return GetFunctions(index, input, output).Default;
     }
 }

@@ -14,7 +14,7 @@ namespace DotBase.Integral;
 /// </summary>
 public unsafe readonly struct IntegralPtr
 {
-    public static readonly IntegralPtr NULL = new IntegralPtr();
+    public static readonly IntegralPtr Null = new IntegralPtr();
 
     /// <summary> The original, unadjusted base pointer. </summary>
     public readonly byte* BytePtr;

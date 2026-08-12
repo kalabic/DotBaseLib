@@ -1,91 +1,83 @@
 using System.Diagnostics;
 using DotBase.Integral.Conversion;
+using DotBase.Integral.Conversion.Internal;
 
 namespace DotBase.Integral;
 
 
 /// <summary>
-/// Holds a structural conversion function, optional scalar converter GCHandle,
-/// and optional context-factory GCHandle.
-/// When a scalar converter is present, callers must obtain a context from the
-/// factory path (at least a <see cref="NumericConversionContext"/>) and use
-/// <see cref="Convert(in IntegralSpan, in IntegralSpan, long, ConversionContext)"/>.
+/// Unmanaged, process-local handle for a structural conversion function and an
+/// optional managed scalar converter. Delegate tokens are borrowed from
+/// process-lifetime conversion tables and policy registry entries.
 /// </summary>
+/// <remarks>
+/// The borrowed tokens are meaningful only in the current process. Do not
+/// persist this value or transfer it between processes.
+/// </remarks>
 public readonly struct IntegralConversionHandle
 {
     /// <summary>
-    /// True when no conversion function is bound (including <c>default(IntegralConversionHandle)</c>).
+    /// <see langword="true"/> when a scalar converter or custom conversion policy
+    /// requires a <see cref="ConversionContext"/>.
     /// </summary>
-    public bool IsNull => _func is null;
-
-    internal readonly IntegralSpanConversionFunc? _func;
-
-    /// <summary>
-    /// GCHandle address for the resolved scalar converter, or zero when unused.
-    /// Resolved into <see cref="NumericConversionContext"/> via
-    /// <see cref="ConversionContext.AssureResolved"/> before invoke.
-    /// </summary>
-    internal readonly nint _numericFunc;
+    public bool NeedsContext =>
+        _numericConverter != 0 || _policy.RegistryIndex > 0;
 
     /// <summary>
-    /// GCHandle address for a context factory delegate, or zero for built-in context creation.
+    /// <see langword="true"/> when no conversion function is bound, including the default value.
     /// </summary>
-    internal readonly nint _contextFactory;
+    public bool IsNull => _func == 0;
+
+    internal readonly nint _func;
+
+    internal readonly nint _numericConverter;
+
+    internal readonly IntegralConversionPolicy _policy;
 
     internal IntegralConversionHandle(
-        IntegralSpanConversionFunc? func,
-        nint numericFunc = 0,
-        nint contextFactory = 0)
+        nint func,
+        nint numericConverter = 0,
+        IntegralConversionPolicy policy = default)
     {
         _func = func;
-        _numericFunc = numericFunc;
-        _contextFactory = contextFactory;
+        _numericConverter = numericConverter;
+        _policy = policy;
     }
 
+    internal IntegralSpanConversionFunc? ResolveFunc()
+        => DelegateHandle.Resolve<IntegralSpanConversionFunc>(_func);
+
+    internal Delegate? ResolveNumericConverter()
+        => DelegateHandle.Resolve<Delegate>(_numericConverter);
+
     /// <summary>
-    /// Contiguous conversion with no context.
-    /// Valid only when this handle has no scalar converter (<c>_numericFunc == 0</c>).
+    /// Performs contiguous conversion without a context. Valid only when
+    /// <see cref="NeedsContext"/> is <see langword="false"/>.
     /// </summary>
+    /// <remarks>
+    /// When <see cref="NeedsContext"/> is <see langword="true"/>, obtain a
+    /// context from <see cref="ConversionHandles"/> and call
+    /// <see cref="ConversionContext.Convert"/> instead. Layout conversions also
+    /// execute through their corresponding context.
+    /// </remarks>
     public long Convert(
         in IntegralSpan input,
         in IntegralSpan output,
         long count)
     {
-        IntegralSpanConversionFunc? func = _func;
-        if (func is null)
+        if (IsNull)
         {
             return 0;
         }
 
-        Debug.Assert(
-            _numericFunc == 0,
-            "Handle has a scalar converter; create a NumericConversionContext (via GetContext / factory) and call Convert(..., context).");
-
-        return func(input, output, count, context: null);
-    }
-
-    /// <summary>
-    /// Conversion with an explicit context (interleaved layout and/or resolved scalar converter).
-    /// Factories must supply at least a <see cref="NumericConversionContext"/> when
-    /// <see cref="_numericFunc"/> is non-zero.
-    /// </summary>
-    public long Convert(
-        in IntegralSpan input,
-        in IntegralSpan output,
-        long count,
-        ConversionContext context)
-    {
-        IntegralSpanConversionFunc? func = _func;
-        if (func is null)
+        Debug.Assert(!NeedsContext, "Handle needs a ConversionContext.");
+        if (NeedsContext)
         {
             return 0;
         }
 
-        if (!context.AssureResolved())
-        {
-            return 0;
-        }
-
-        return func(input, output, count, context);
+        IntegralSpanConversionFunc? func = ResolveFunc();
+        Debug.Assert(func is not null, "Structural conversion delegate could not be resolved.");
+        return func is null ? 0 : func(input, output, count, null);
     }
 }

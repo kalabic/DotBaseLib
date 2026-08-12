@@ -44,14 +44,15 @@ public unsafe class InterleavedConversionTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, blocks, valueType, destinationOrder, blockCapacity: 1);
 
-            IntegralConversionHandle handle = ConversionHandles.GetInterleavedReader(src.Format, dst.Format);
-            InterleavedReaderContext ctx = ConversionHandles.GetInterleavedReaderContext(
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(src.Format, dst.Format);
+            InterleavedReaderContext? ctx = ConversionHandles.GetInterleavedReaderContext(
                 handle,
                 blockCapacity,
                 lane);
 
             Assert.False(handle.IsNull);
-            long n = handle.Convert(src, dst, count: 100, ctx);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 100);
 
             Assert.Equal(blocks, n);
             for (int i = 0; i < blocks; ++i)
@@ -117,14 +118,15 @@ public unsafe class InterleavedConversionTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, blocks * blockCapacity, valueType, destinationOrder, blockCapacity);
 
-            IntegralConversionHandle handle = ConversionHandles.GetInterleavedWriter(src.Format, dst.Format);
-            InterleavedWriterContext ctx = ConversionHandles.GetInterleavedWriterContext(
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(src.Format, dst.Format);
+            InterleavedWriterContext? ctx = ConversionHandles.GetInterleavedWriterContext(
                 handle,
                 blockCapacity,
                 lane);
 
             Assert.False(handle.IsNull);
-            long n = handle.Convert(src, dst, count: 100, ctx);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 100);
 
             Assert.Equal(blocks, n);
             for (int i = 0; i < blocks; ++i)
@@ -179,16 +181,17 @@ public unsafe class InterleavedConversionTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, blocks, IntegralType.UInt8, ByteOrder.LittleEndian, blockCapacity: 1);
 
-            IntegralConversionHandle handle = ConversionHandles.GetInterleavedReader(
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(
                 src.Format,
                 dst.Format);
-            InterleavedReaderContext ctx = ConversionHandles.GetInterleavedReaderContext(
+            InterleavedReaderContext? ctx = ConversionHandles.GetInterleavedReaderContext(
                 handle,
                 blockCapacity,
                 index);
 
             Assert.False(handle.IsNull);
-            long n = handle.Convert(src, dst, count: 100, ctx);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 100);
             Assert.Equal(blocks, n);
             Assert.Equal(20, dstMem[0]);
             Assert.Equal(40, dstMem[1]);
@@ -224,15 +227,16 @@ public unsafe class InterleavedConversionTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, 4, IntegralType.UInt8, ByteOrder.LittleEndian, 1);
 
-            IntegralConversionHandle handle = ConversionHandles.GetInterleavedReader(
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(
                 src.Format,
                 dst.Format);
-            InterleavedReaderContext ctx = ConversionHandles.GetInterleavedReaderContext(
+            InterleavedReaderContext? ctx = ConversionHandles.GetInterleavedReaderContext(
                 handle,
                 blockCapacity,
                 index: 0);
 
-            long n = handle.Convert(src, dst, count: 10, ctx);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 10);
             Assert.Equal(1, n);
             Assert.Equal(1, dstMem[0]);
             Assert.Equal(0xFF, dstMem[1]);
@@ -267,16 +271,17 @@ public unsafe class InterleavedConversionTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, blocks * blockCapacity, IntegralType.UInt8, ByteOrder.LittleEndian, blockCapacity);
 
-            IntegralConversionHandle handle = ConversionHandles.GetInterleavedWriter(
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(
                 src.Format,
                 dst.Format);
-            InterleavedWriterContext ctx = ConversionHandles.GetInterleavedWriterContext(
+            InterleavedWriterContext? ctx = ConversionHandles.GetInterleavedWriterContext(
                 handle,
                 blockCapacity,
                 index);
 
             Assert.False(handle.IsNull);
-            long n = handle.Convert(src, dst, count: 100, ctx);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 100);
             Assert.Equal(blocks, n);
             Assert.Equal(1, dstMem[0]);
             Assert.Equal(0, dstMem[1]);
@@ -311,15 +316,16 @@ public unsafe class InterleavedConversionTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, blocks, IntegralType.Int32, ByteOrder.LittleEndian, 1);
 
-            IntegralConversionHandle handle = ConversionHandles.GetInterleavedReader(
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(
                 src.Format,
                 dst.Format);
-            InterleavedReaderContext ctx = ConversionHandles.GetInterleavedReaderContext(
+            InterleavedReaderContext? ctx = ConversionHandles.GetInterleavedReaderContext(
                 handle,
                 blockCapacity,
                 index: 0);
 
-            long n = handle.Convert(src, dst, count: 2, ctx);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 2);
             Assert.Equal(2, n);
 
             int* dstI = (int*)dstMem;
@@ -354,15 +360,16 @@ public unsafe class InterleavedConversionTests
             IntegralSpan dst = IntegralTestData.CreateSpan(
                 dstMem, blocks * blockCapacity, IntegralType.UInt8, ByteOrder.LittleEndian, blockCapacity);
 
-            IntegralConversionHandle handle = ConversionHandles.GetInterleavedWriter(
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(
                 src.Format,
                 dst.Format);
-            InterleavedWriterContext ctx = ConversionHandles.GetInterleavedWriterContext(
+            InterleavedWriterContext? ctx = ConversionHandles.GetInterleavedWriterContext(
                 handle,
                 blockCapacity,
                 index: 1);
 
-            long n = handle.Convert(src, dst, count: 2, ctx);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 2);
             Assert.Equal(2, n);
             Assert.Equal(0, dstMem[0]);
             Assert.Equal(7, dstMem[1]);
@@ -377,6 +384,132 @@ public unsafe class InterleavedConversionTests
     }
 
     [Fact]
+    public void Transfer_GathersInputLaneAndScattersOutputLane_UInt8()
+    {
+        const int inputBlockCapacity = 2;
+        const int outputBlockCapacity = 3;
+        const int blocks = 3;
+        const int inputLane = 1;
+        const int outputLane = 2;
+        const byte sentinel = 0xA5;
+        byte* srcMem = IntegralTestData.AlignedAlloc(blocks * inputBlockCapacity);
+        byte* dstMem = IntegralTestData.AlignedAlloc(blocks * outputBlockCapacity);
+        try
+        {
+            // Input blocks: (10,20), (30,40), (50,60) — transfer lane 1 → 20,40,60
+            byte[] flat = [10, 20, 30, 40, 50, 60];
+            for (int i = 0; i < flat.Length; i++)
+            {
+                srcMem[i] = flat[i];
+            }
+
+            for (int i = 0; i < blocks * outputBlockCapacity; i++)
+            {
+                dstMem[i] = sentinel;
+            }
+
+            IntegralSpan src = IntegralTestData.CreateSpan(
+                srcMem,
+                blocks * inputBlockCapacity,
+                IntegralType.UInt8,
+                ByteOrder.LittleEndian,
+                inputBlockCapacity);
+            IntegralSpan dst = IntegralTestData.CreateSpan(
+                dstMem,
+                blocks * outputBlockCapacity,
+                IntegralType.UInt8,
+                ByteOrder.LittleEndian,
+                outputBlockCapacity);
+
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(
+                src.Format,
+                dst.Format);
+            InterleavedTransferContext? ctx = ConversionHandles.GetInterleavedTransferContext(
+                handle,
+                inputBlockCapacity,
+                inputLane,
+                outputBlockCapacity,
+                outputLane);
+
+            Assert.False(handle.IsNull);
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 100);
+            Assert.Equal(blocks, n);
+
+            for (int i = 0; i < blocks; i++)
+            {
+                for (int lane = 0; lane < outputBlockCapacity; lane++)
+                {
+                    byte expected = lane == outputLane
+                        ? flat[i * inputBlockCapacity + inputLane]
+                        : sentinel;
+                    Assert.Equal(expected, dstMem[i * outputBlockCapacity + lane]);
+                }
+            }
+        }
+        finally
+        {
+            IntegralTestData.AlignedFree(srcMem);
+            IntegralTestData.AlignedFree(dstMem);
+        }
+    }
+
+    [Fact]
+    public void Transfer_IgnoresTrailingPartialBlocksOnBothSides()
+    {
+        const int inputBlockCapacity = 2;
+        const int outputBlockCapacity = 3;
+        // 5 input values → 2 complete blocks + 1 trailing
+        // 7 output values → 2 complete blocks + 1 trailing
+        byte* srcMem = IntegralTestData.AlignedAlloc(5);
+        byte* dstMem = IntegralTestData.AlignedAlloc(7);
+        try
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                srcMem[i] = (byte)(i + 1);
+            }
+
+            for (int i = 0; i < 7; i++)
+            {
+                dstMem[i] = 0xFF;
+            }
+
+            IntegralSpan src = IntegralTestData.CreateSpan(
+                srcMem, 5, IntegralType.UInt8, ByteOrder.LittleEndian, inputBlockCapacity);
+            IntegralSpan dst = IntegralTestData.CreateSpan(
+                dstMem, 7, IntegralType.UInt8, ByteOrder.LittleEndian, outputBlockCapacity);
+
+            IntegralConversionHandle handle = ConversionHandles.GetInterleaved(
+                src.Format,
+                dst.Format);
+            InterleavedTransferContext? ctx = ConversionHandles.GetInterleavedTransferContext(
+                handle,
+                inputBlockCapacity,
+                inputValueIndex: 0,
+                outputBlockCapacity,
+                outputValueIndex: 1);
+
+            Assert.NotNull(ctx);
+            long n = ctx.Convert(src, dst, count: 10);
+            Assert.Equal(2, n);
+            // Output blocks of 3: indices 0..2 and 3..5 written lane 1; index 6 trailing untouched
+            Assert.Equal(0xFF, dstMem[0]);
+            Assert.Equal(1, dstMem[1]);
+            Assert.Equal(0xFF, dstMem[2]);
+            Assert.Equal(0xFF, dstMem[3]);
+            Assert.Equal(3, dstMem[4]);
+            Assert.Equal(0xFF, dstMem[5]);
+            Assert.Equal(0xFF, dstMem[6]);
+        }
+        finally
+        {
+            IntegralTestData.AlignedFree(srcMem);
+            IntegralTestData.AlignedFree(dstMem);
+        }
+    }
+
+    [Fact]
     public void Table_BuildsAndHandlesResolve()
     {
         var table = InterleavedDelegateTable.Instance;
@@ -386,14 +519,23 @@ public unsafe class InterleavedConversionTests
         IntegralConversionHandle handle = table.GetDefaultHandle(fmt, fmt);
         Assert.False(handle.IsNull);
 
-        InterleavedReaderContext readerCtx =
+        InterleavedReaderContext? readerCtx =
             ConversionHandles.GetInterleavedReaderContext(handle, 2, 0);
-        InterleavedWriterContext writerCtx =
+        InterleavedWriterContext? writerCtx =
             ConversionHandles.GetInterleavedWriterContext(handle, 2, 1);
+        InterleavedTransferContext? transferCtx =
+            ConversionHandles.GetInterleavedTransferContext(handle, 2, 0, 3, 1);
+        Assert.NotNull(readerCtx);
+        Assert.NotNull(writerCtx);
+        Assert.NotNull(transferCtx);
         Assert.Equal(2, readerCtx.InputBlockCapacity);
         Assert.Equal(0, readerCtx.ValueIndex);
         Assert.Equal(2, writerCtx.OutputBlockCapacity);
         Assert.Equal(1, writerCtx.ValueIndex);
+        Assert.Equal(2, transferCtx.InputBlockCapacity);
+        Assert.Equal(0, transferCtx.InputValueIndex);
+        Assert.Equal(3, transferCtx.OutputBlockCapacity);
+        Assert.Equal(1, transferCtx.OutputValueIndex);
     }
 
     private static void SetRaw16(byte* memory, int index, byte first, byte second)

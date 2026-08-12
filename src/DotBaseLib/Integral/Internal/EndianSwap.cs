@@ -19,6 +19,8 @@ namespace DotBase.Integral.Internal;
 
 internal static unsafe class EndianSwap
 {
+    const nuint ULONG_ALIGNMENT_MASK = sizeof(ulong) - 1;
+
     /// <summary>
     /// Swaps the two bytes of every 16-bit lane from <paramref name="source"/>
     /// into <paramref name="destination"/>.
@@ -46,11 +48,38 @@ internal static unsafe class EndianSwap
             source + byteCount <= destination,
             "EndianSwap16BitLanes requires non-overlapping or identical pointers.");
 
+
+        // The method contract guarantees at least 2-byte alignment.
+        Debug.Assert(
+            (((nuint)source | (nuint)destination) & 1) == 0,
+            "Source and destination must be 2-byte aligned.");
+
+        // Advancing both pointers by two bytes preserves their relative alignment.
+        // If their offsets modulo 8 differ, they can never both become 8-byte aligned.
+        if ((((nuint)source ^ (nuint)destination) & ULONG_ALIGNMENT_MASK) != 0)
+        {
+            Swap16BitLanesUnaligned(source, destination, valueCount);
+            return;
+        }
+
         // Process four 16-bit lanes per ulong, then two per uint, then one ushort.
         // Mask swaps adjacent bytes: [b0 b1 ...] → [b1 b0 ...] (not a full 64-bit reverse).
         long remaining = byteCount;
         byte* src = source;
         byte* dst = destination;
+
+        // Peel 16-bit lanes until both pointers are 8-byte aligned.
+        // At most three lanes are processed here.
+        while (remaining > 0 &&
+               (((nuint)src | (nuint)dst) & ULONG_ALIGNMENT_MASK) != 0)
+        {
+            ushort v = *(ushort*)src;
+            *(ushort*)dst = (ushort)((v >> 8) | (v << 8));
+
+            src += sizeof(ushort);
+            dst += sizeof(ushort);
+            remaining -= sizeof(short);
+        }
 
         while (remaining >= 8)
         {

@@ -298,7 +298,73 @@ public unsafe class IntegralSpanTests
             IntegralSpan empty = IntegralSpan.Empty.ChangeFormat(IntegralType.Int16);
             Assert.Equal(0, empty.Length);
             Assert.Equal(0, (nint)empty.BytePtr);
+            Assert.Equal(IntegralType.Int16, empty.Format.ValueType);
+            Assert.Equal(sizeof(short), empty.Format.ValueSize);
+            Assert.Equal(1, empty.Format.BlockCapacity);
+            Assert.True(empty.IsValid());
         }
+    }
+
+    [Fact]
+    public void EmptySpanReformatPreservesRequestedFormatAndPolicy()
+    {
+        IntegralConversionPolicy sourcePolicy =
+            IntegralConversionPolicy.FromValueConverters(
+                NumericValueConverters.Default);
+        IntegralSpan typedEmpty = new(
+            null,
+            0,
+            0,
+            new IntegralFormat(
+                IntegralType.UInt8,
+                1,
+                ByteOrder.BigEndian,
+                sourcePolicy));
+
+        IntegralSpan changed = typedEmpty.ChangeFormat(
+            IntegralType.Int32,
+            blockCapacity: 3);
+
+        Assert.Equal(0, changed.Length);
+        Assert.Equal(0, (nint)changed.BytePtr);
+        Assert.Equal(IntegralType.Int32, changed.Format.ValueType);
+        Assert.Equal(sizeof(int), changed.Format.ValueSize);
+        Assert.Equal(3, changed.Format.BlockCapacity);
+        Assert.Equal(ByteOrder.BigEndian, changed.Format.ByteOrder);
+        Assert.Equal(sourcePolicy, changed.Format.ConversionPolicy);
+        Assert.True(changed.IsValid());
+
+        IntegralConversionPolicy requestedPolicy =
+            IntegralConversionPolicy.RefuseAll();
+        IntegralFormat requestedFormat = new(
+            IntegralType.Int64,
+            2,
+            ByteOrder.LittleEndian,
+            requestedPolicy);
+        IntegralSpan ranged = IntegralSpan.Empty.GetBlockSpan(
+            IntegralRange.Empty,
+            requestedFormat);
+
+        Assert.Equal(0, ranged.Length);
+        Assert.Equal(0, (nint)ranged.BytePtr);
+        Assert.Equal(IntegralType.Int64, ranged.Format.ValueType);
+        Assert.Equal(sizeof(long), ranged.Format.ValueSize);
+        Assert.Equal(2, ranged.Format.BlockCapacity);
+        Assert.Equal(ByteOrder.LittleEndian, ranged.Format.ByteOrder);
+        Assert.Equal(requestedPolicy, ranged.Format.ConversionPolicy);
+        Assert.True(ranged.IsValid());
+    }
+
+    [Fact]
+    public void EmptySpanCheckedReformatStillValidatesRequestedFormat()
+    {
+        ArgumentOutOfRangeException error =
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                IntegralSpan.Empty.ChangeFormatChecked(
+                    valueSize: -1,
+                    blockCapacity: 0));
+
+        Assert.Equal("valueSize", error.ParamName);
     }
 
     [Fact]

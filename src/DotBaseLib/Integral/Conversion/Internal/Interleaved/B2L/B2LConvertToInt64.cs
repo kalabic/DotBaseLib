@@ -8,29 +8,24 @@ namespace DotBase.Integral.Conversion.Internal.Interleaved.B2L;
 
 internal static unsafe class B2LConvertToInt64
 {
-    internal static void AddToTable(IConversionDelegateTable table)
-    {
-        table.SetCustomFunc(B2L_UInt8_To_Int64, ByteOrder.BigEndian, IntegralType.UInt8, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_Int8_To_Int64, ByteOrder.BigEndian, IntegralType.Int8, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_UInt16_To_Int64, ByteOrder.BigEndian, IntegralType.UInt16, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_Int16_To_Int64, ByteOrder.BigEndian, IntegralType.Int16, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_UInt32_To_Int64, ByteOrder.BigEndian, IntegralType.UInt32, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_Int32_To_Int64, ByteOrder.BigEndian, IntegralType.Int32, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_UInt64_To_Int64, ByteOrder.BigEndian, IntegralType.UInt64, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_Int64_To_Int64, ByteOrder.BigEndian, IntegralType.Int64, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_Float_To_Int64, ByteOrder.BigEndian, IntegralType.Float, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetCustomFunc(B2L_Double_To_Int64, ByteOrder.BigEndian, IntegralType.Double, ByteOrder.LittleEndian, IntegralType.Int64);
 
-        table.SetDefaultFunc(B2L_UInt8_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt8, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_Int8_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int8, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_UInt16_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt16, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_Int16_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int16, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_UInt32_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt32, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_Int32_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int32, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_UInt64_To_Int64_Default, ByteOrder.BigEndian, IntegralType.UInt64, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_Int64_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Int64, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_Float_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Float, ByteOrder.LittleEndian, IntegralType.Int64);
-        table.SetDefaultFunc(B2L_Double_To_Int64_Default, ByteOrder.BigEndian, IntegralType.Double, ByteOrder.LittleEndian, IntegralType.Int64);
+    internal static InterleavedConversionDelegates Resolve(
+        in IntegralFormat input)
+    {
+        return input.ValueType switch
+        {
+            IntegralType.UInt8 => new(B2L_UInt8_To_Int64, B2L_UInt8_To_Int64_Default),
+            IntegralType.Int8 => new(B2L_Int8_To_Int64, B2L_Int8_To_Int64_Default),
+            IntegralType.UInt16 => new(B2L_UInt16_To_Int64, B2L_UInt16_To_Int64_Default),
+            IntegralType.Int16 => new(B2L_Int16_To_Int64, B2L_Int16_To_Int64_Default),
+            IntegralType.UInt32 => new(B2L_UInt32_To_Int64, B2L_UInt32_To_Int64_Default),
+            IntegralType.Int32 => new(B2L_Int32_To_Int64, B2L_Int32_To_Int64_Default),
+            IntegralType.UInt64 => new(B2L_UInt64_To_Int64, B2L_UInt64_To_Int64_Default),
+            IntegralType.Int64 => new(B2L_Int64_To_Int64, B2L_Int64_To_Int64_Default),
+            IntegralType.Float => new(B2L_Float_To_Int64, B2L_Float_To_Int64_Default),
+            IntegralType.Double => new(B2L_Double_To_Int64, B2L_Double_To_Int64_Default),
+            _ => throw new ArgumentOutOfRangeException(nameof(input)),
+        };
     }
 
     public static long B2L_UInt8_To_Int64(

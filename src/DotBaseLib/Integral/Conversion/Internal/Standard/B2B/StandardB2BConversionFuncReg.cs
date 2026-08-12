@@ -2,17 +2,24 @@ namespace DotBase.Integral.Conversion.Internal.Standard.B2B;
 
 internal static class StandardB2BConversionFuncReg
 {
-    internal static void AddToTable(IConversionDelegateTable table)
+
+    internal static StandardConversionDelegates Resolve(
+        in IntegralFormat input,
+        in IntegralFormat output)
     {
-        B2BConvertToUInt8.AddToTable(table);
-        B2BConvertToInt8.AddToTable(table);
-        B2BConvertToUInt16.AddToTable(table);
-        B2BConvertToInt16.AddToTable(table);
-        B2BConvertToUInt32.AddToTable(table);
-        B2BConvertToInt32.AddToTable(table);
-        B2BConvertToUInt64.AddToTable(table);
-        B2BConvertToInt64.AddToTable(table);
-        B2BConvertToFloat.AddToTable(table);
-        B2BConvertToDouble.AddToTable(table);
+        return output.ValueType switch
+        {
+            IntegralType.UInt8 => B2BConvertToUInt8.Resolve(input),
+            IntegralType.Int8 => B2BConvertToInt8.Resolve(input),
+            IntegralType.UInt16 => B2BConvertToUInt16.Resolve(input),
+            IntegralType.Int16 => B2BConvertToInt16.Resolve(input),
+            IntegralType.UInt32 => B2BConvertToUInt32.Resolve(input),
+            IntegralType.Int32 => B2BConvertToInt32.Resolve(input),
+            IntegralType.UInt64 => B2BConvertToUInt64.Resolve(input),
+            IntegralType.Int64 => B2BConvertToInt64.Resolve(input),
+            IntegralType.Float => B2BConvertToFloat.Resolve(input),
+            IntegralType.Double => B2BConvertToDouble.Resolve(input),
+            _ => throw new ArgumentOutOfRangeException(nameof(output)),
+        };
     }
 }

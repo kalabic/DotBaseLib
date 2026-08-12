@@ -1,28 +1,41 @@
+using System.Diagnostics;
+
 namespace DotBase.Integral.Conversion;
 
 
 /// <summary>
-/// Per-call conversion bag (layout, resolved scalar converter, etc.).
+/// Per-call conversion state and execution surface bound to a conversion handle.
 /// Context factories must create a <see cref="NumericConversionContext"/> (or subclass)
 /// when the handle carries a scalar converter.
 /// </summary>
 public class ConversionContext
 {
-    public virtual Delegate? NumericFunc => null;
+    public virtual Delegate? NumericFunc { get { return null; } }
 
-    protected readonly IntegralConversionHandle _handle;
+    internal readonly IntegralSpanConversionFunc? _func;
 
     public ConversionContext(IntegralConversionHandle handle)
     {
-        _handle = handle;
+        _func = handle.ResolveFunc();
     }
 
-    public long Convert(
+    /// <summary>
+    /// Executes the structural conversion function bound by this context.
+    /// Layout subclasses may first reshape or slice the input and output views.
+    /// </summary>
+    public virtual long Convert(
         in IntegralSpan input,
         in IntegralSpan output,
         long count)
     {
-        return _handle.Convert(input, output, count, this);
+        bool resolved = AssureResolved();
+        Debug.Assert(resolved, "Context not resolved.");
+        if (!resolved)
+        {
+            return 0;
+        }
+
+        return _func!(input, output, count, this);
     }
 
     /// <summary>
@@ -30,5 +43,5 @@ public class ConversionContext
     /// Base implementation succeeds; <see cref="NumericConversionContext"/> resolves
     /// <see cref="NumericConversionContext.NumericFunc"/> from the handle.
     /// </summary>
-    public virtual bool AssureResolved() => true;
+    public virtual bool AssureResolved() => _func is not null;
 }

@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using DotBase.Integral.Conversion.Internal;
 using DotBase.Integral.Conversion.Internal.Interleaved;
 using DotBase.Integral.Conversion.Internal.Standard;
@@ -9,8 +7,14 @@ namespace DotBase.Integral.Conversion;
 
 /// <summary>
 /// Public façade for obtaining conversion handles and contexts.
-/// Policy dispatch (default / refuse / factory) lives here; tables stay policy-free.
+/// Policy dispatch (built-in / refuse / managed registry entry) lives here;
+/// conversion tables stay policy-free.
 /// </summary>
+/// <remarks>
+/// Context factories return <see langword="null"/> when no conversion handle is
+/// available. Execute context-backed and layout conversions through the returned
+/// <see cref="ConversionContext"/>.
+/// </remarks>
 public static class ConversionHandles
 {
     // -------------------------------------------------------------------------
@@ -21,20 +25,35 @@ public static class ConversionHandles
         in IntegralFormat input,
         in IntegralFormat output)
     {
-        nint slot = output.ConversionPolicy.SpanHandleFactorySlot;
-        if (ConversionPolicySlot.IsRefuse(slot))
+        int registryIndex = output.ConversionPolicy.RegistryIndex;
+        if (registryIndex == ConversionPolicyRegistry.Refuse)
         {
             return default;
         }
 
-        if (ConversionPolicySlot.IsDefault(slot))
+        if (registryIndex == ConversionPolicyRegistry.Default)
         {
             return StandardDelegateTable.Instance.GetDefaultHandle(input, output);
         }
 
-        IntegralSpanConversionHandleFunc factory =
-            ConversionPolicySlot.ResolveFactory<IntegralSpanConversionHandleFunc>(slot);
-        return factory(input, output);
+        ConversionPolicyEntry entry =
+            ConversionPolicyRegistry.Resolve(registryIndex);
+        return entry.Kind switch
+        {
+            ConversionPolicyKind.ValueConverters =>
+                StandardDelegateTable.Instance.GetCustomHandle(
+                    input,
+                    output,
+                    entry.ValueConverters!),
+            ConversionPolicyKind.StaticSpanFunction =>
+                InternalConversionDelegates.CreateStaticSpanHandle(
+                    entry.SpanFunctionHandle,
+                    entry.ValueConverters,
+                    input,
+                    output),
+            _ => throw new InvalidOperationException(
+                $"Unsupported conversion policy kind '{entry.Kind}'."),
+        };
     }
 
     public static IntegralConversionHandle GetHandle(
@@ -46,168 +65,255 @@ public static class ConversionHandles
         return GetHandle(input, output);
     }
 
-    public static IntegralConversionHandle GetInterleavedReaderHandle(
+    public static IntegralConversionHandle GetInterleavedHandle(
         in IntegralFormat input,
         in IntegralFormat output)
     {
-        nint slot = output.ConversionPolicy.ReaderHandleFactorySlot;
-        if (ConversionPolicySlot.IsRefuse(slot))
+        int registryIndex = output.ConversionPolicy.RegistryIndex;
+        if (registryIndex == ConversionPolicyRegistry.Refuse)
         {
             return default;
         }
 
-        if (ConversionPolicySlot.IsDefault(slot))
+        if (registryIndex == ConversionPolicyRegistry.Default)
         {
             return InterleavedDelegateTable.Instance.GetDefaultHandle(input, output);
         }
 
-        InterleavedReaderConversionHandleFunc factory =
-            ConversionPolicySlot.ResolveFactory<InterleavedReaderConversionHandleFunc>(slot);
-        return factory(input, output);
+        ConversionPolicyEntry entry =
+            ConversionPolicyRegistry.Resolve(registryIndex);
+        return entry.Kind == ConversionPolicyKind.ValueConverters
+            ? InterleavedDelegateTable.Instance.GetCustomHandle(
+                input,
+                output,
+                entry.ValueConverters!)
+            : InterleavedDelegateTable.Instance.GetDefaultHandle(input, output);
     }
 
-    public static IntegralConversionHandle GetInterleavedWriterHandle(
+    public static IntegralConversionHandle GetPlanarHandle(
         in IntegralFormat input,
         in IntegralFormat output)
     {
-        nint slot = output.ConversionPolicy.WriterHandleFactorySlot;
-        if (ConversionPolicySlot.IsRefuse(slot))
+        int registryIndex = output.ConversionPolicy.RegistryIndex;
+        if (registryIndex == ConversionPolicyRegistry.Refuse)
         {
             return default;
         }
 
-        if (ConversionPolicySlot.IsDefault(slot))
+        if (registryIndex == ConversionPolicyRegistry.Default)
         {
-            return InterleavedDelegateTable.Instance.GetDefaultHandle(input, output);
+            return StandardDelegateTable.Instance.GetDefaultHandle(input, output);
         }
 
-        InterleavedWriterConversionHandleFunc factory =
-            ConversionPolicySlot.ResolveFactory<InterleavedWriterConversionHandleFunc>(slot);
-        return factory(input, output);
+        ConversionPolicyEntry entry =
+            ConversionPolicyRegistry.Resolve(registryIndex);
+        return entry.Kind == ConversionPolicyKind.ValueConverters
+            ? StandardDelegateTable.Instance.GetCustomHandle(
+                input,
+                output,
+                entry.ValueConverters!)
+            : StandardDelegateTable.Instance.GetDefaultHandle(input, output);
     }
 
-    /// <summary>Alias for <see cref="GetInterleavedReaderHandle"/>.</summary>
-    public static IntegralConversionHandle GetInterleavedReader(
+    /// <summary>Alias for <see cref="GetInterleavedHandle"/>.</summary>
+    public static IntegralConversionHandle GetInterleaved(
         in IntegralFormat input,
         in IntegralFormat output)
-        => GetInterleavedReaderHandle(input, output);
+        => GetInterleavedHandle(input, output);
 
-    /// <summary>Alias for <see cref="GetInterleavedWriterHandle"/>.</summary>
-    public static IntegralConversionHandle GetInterleavedWriter(
+    /// <summary>Alias for <see cref="GetPlanarHandle"/>.</summary>
+    public static IntegralConversionHandle GetPlanar(
         in IntegralFormat input,
         in IntegralFormat output)
-        => GetInterleavedWriterHandle(input, output);
+        => GetPlanarHandle(input, output);
 
     // -------------------------------------------------------------------------
     // Contexts
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// Creates the default contiguous context bound to <paramref name="handle"/>.
+    /// </summary>
+    /// <returns>A matching context, or <see langword="null"/> for a null handle.</returns>
     public static ConversionContext? GetContext(
-        IntegralConversionHandle handle,
-        in IntegralFormat input,
-        in IntegralFormat output)
+        IntegralConversionHandle handle)
     {
-        if (handle.IsNull)
-        {
-            return null;
-        }
-
-        nint slot = handle._contextFactory;
-        if (slot == 0)
-        {
-            return InternalConversionDelegates.SpanContext_Default(handle, input, output);
-        }
-
-        Debug.Assert(ConversionPolicySlot.IsFactory(slot));
-        var factory = (IntegralSpanConversionContextFunc)GCHandle.FromIntPtr(slot).Target!;
-        return factory(input, output);
+        return InternalConversionDelegates.SpanContext_Default(handle);
     }
 
-    /// <summary>Obtain handle then default span context.</summary>
+    /// <summary>Obtains a contiguous handle, then creates its default context.</summary>
+    /// <returns>A matching context, or <see langword="null"/> when conversion is unavailable.</returns>
     public static ConversionContext? GetContext(
         in IntegralFormat input,
         in IntegralFormat output)
     {
-        return GetContext(GetHandle(input, output), input, output);
+        return GetContext(GetHandle(input, output));
     }
 
-    public static ConversionContext? GetInterleavedReaderContext(
+    // -------------------------------------------------------------------------
+    // Planar Contexts
+    // -------------------------------------------------------------------------
+
+    /// <summary>Obtain the planar handle, then create its reader context.</summary>
+    public static PlanarReaderContext? GetPlanarReaderContext(
+        in IntegralFormat input,
+        in IntegralFormat output,
+        long planeCapacity,
+        int blockCapacity,
+        int inputPlaneIndex)
+    {
+        IntegralConversionHandle handle = GetPlanarHandle(input, output);
+        return InternalConversionDelegates.PlanarReaderContext_Default(
+            handle, planeCapacity, blockCapacity, inputPlaneIndex);
+    }
+
+    /// <summary>
+    /// Planar reader layout context using built-in context construction.
+    /// Call <see cref="PlanarReaderContext.Convert"/> so the selected plane is sliced.
+    /// </summary>
+    public static PlanarReaderContext? GetPlanarReaderContext(
         IntegralConversionHandle handle,
+        long planeCapacity,
+        int blockCapacity,
+        int inputPlaneIndex)
+    {
+        return InternalConversionDelegates.PlanarReaderContext_Default(
+            handle, planeCapacity, blockCapacity, inputPlaneIndex);
+    }
+
+    /// <summary>Obtain the planar handle, then create its writer context.</summary>
+    public static PlanarWriterContext? GetPlanarWriterContext(
+        in IntegralFormat input,
+        in IntegralFormat output,
+        long planeCapacity,
+        int blockCapacity,
+        int outputPlaneIndex)
+    {
+        IntegralConversionHandle handle = GetPlanarHandle(input, output);
+        return InternalConversionDelegates.PlanarWriterContext_Default(
+            handle, planeCapacity, blockCapacity, outputPlaneIndex);
+    }
+
+    /// <summary>
+    /// Planar writer layout context using built-in context construction.
+    /// Call <see cref="PlanarWriterContext.Convert"/> so the selected plane is sliced.
+    /// </summary>
+    public static PlanarWriterContext? GetPlanarWriterContext(
+        IntegralConversionHandle handle,
+        long planeCapacity,
+        int blockCapacity,
+        int outputPlaneIndex)
+    {
+        return InternalConversionDelegates.PlanarWriterContext_Default(
+            handle, planeCapacity, blockCapacity, outputPlaneIndex);
+    }
+
+    /// <summary>Obtain the planar handle, then create its transfer context.</summary>
+    public static PlanarTransferContext? GetPlanarTransferContext(
+        in IntegralFormat input,
+        in IntegralFormat output,
+        long planeCapacity,
+        int blockCapacity,
+        int inputPlaneIndex,
+        int outputPlaneIndex)
+    {
+        IntegralConversionHandle handle = GetPlanarHandle(input, output);
+        return InternalConversionDelegates.PlanarTransferContext_Default(
+            handle, planeCapacity, blockCapacity, inputPlaneIndex, outputPlaneIndex);
+    }
+
+    /// <summary>
+    /// Planar transfer layout context using built-in context construction.
+    /// Call <see cref="PlanarTransferContext.Convert"/> so the selected planes are sliced.
+    /// </summary>
+    public static PlanarTransferContext? GetPlanarTransferContext(
+        IntegralConversionHandle handle,
+        long planeCapacity,
+        int blockCapacity,
+        int inputPlaneIndex,
+        int outputPlaneIndex)
+    {
+        return InternalConversionDelegates.PlanarTransferContext_Default(
+            handle, planeCapacity, blockCapacity, inputPlaneIndex, outputPlaneIndex);
+    }
+
+    // -------------------------------------------------------------------------
+    // Interleaved Contexts
+    // -------------------------------------------------------------------------
+
+    /// <summary>Obtain the interleaved handle, then create its reader context.</summary>
+    public static InterleavedReaderContext? GetInterleavedReaderContext(
         in IntegralFormat input,
         in IntegralFormat output,
         int inputBlockCapacity,
         int index)
     {
-        if (handle.IsNull)
-        {
-            return null;
-        }
-
-        nint slot = handle._contextFactory;
-        if (slot == 0)
-        {
-            return InternalConversionDelegates.ReaderContext_Default(
-                handle, input, output, inputBlockCapacity, index);
-        }
-
-        Debug.Assert(ConversionPolicySlot.IsFactory(slot));
-        var factory = (InterleavedReaderConversionContextFunc)GCHandle.FromIntPtr(slot).Target!;
-        return factory(input, output, inputBlockCapacity, index);
+        IntegralConversionHandle handle = GetInterleavedHandle(input, output);
+        return InternalConversionDelegates.InterleavedReaderContext_Default(
+            handle, inputBlockCapacity, index);
     }
 
     /// <summary>
-    /// Reader layout context (built-in). Prefer passing formats when a custom context factory is used.
+    /// Interleaved reader layout context using built-in context construction.
     /// </summary>
-    public static InterleavedReaderContext GetInterleavedReaderContext(
+    public static InterleavedReaderContext? GetInterleavedReaderContext(
         IntegralConversionHandle handle,
         int inputBlockCapacity,
         int index)
     {
-        return (InterleavedReaderContext)InternalConversionDelegates.ReaderContext_Default(
-            handle,
-            default,
-            default,
-            inputBlockCapacity,
-            index)!;
+        return InternalConversionDelegates.InterleavedReaderContext_Default(
+            handle, inputBlockCapacity, index);
     }
 
-    public static ConversionContext? GetInterleavedWriterContext(
-        IntegralConversionHandle handle,
+    /// <summary>Obtain the interleaved handle, then create its writer context.</summary>
+    public static InterleavedWriterContext? GetInterleavedWriterContext(
         in IntegralFormat input,
         in IntegralFormat output,
         int outputBlockCapacity,
         int index)
     {
-        if (handle.IsNull)
-        {
-            return null;
-        }
-
-        nint slot = handle._contextFactory;
-        if (slot == 0)
-        {
-            return InternalConversionDelegates.WriterContext_Default(
-                handle, input, output, outputBlockCapacity, index);
-        }
-
-        Debug.Assert(ConversionPolicySlot.IsFactory(slot));
-        var factory = (InterleavedWriterConversionContextFunc)GCHandle.FromIntPtr(slot).Target!;
-        return factory(input, output, outputBlockCapacity, index);
+        IntegralConversionHandle handle = GetInterleavedHandle(input, output);
+        return InternalConversionDelegates.InterleavedWriterContext_Default(
+            handle, outputBlockCapacity, index);
     }
 
     /// <summary>
-    /// Writer layout context (built-in). Prefer passing formats when a custom context factory is used.
+    /// Interleaved writer layout context using built-in context construction.
     /// </summary>
-    public static InterleavedWriterContext GetInterleavedWriterContext(
+    public static InterleavedWriterContext? GetInterleavedWriterContext(
         IntegralConversionHandle handle,
         int outputBlockCapacity,
         int index)
     {
-        return (InterleavedWriterContext)InternalConversionDelegates.WriterContext_Default(
-            handle,
-            default,
-            default,
-            outputBlockCapacity,
-            index)!;
+        return InternalConversionDelegates.InterleavedWriterContext_Default(
+            handle, outputBlockCapacity, index);
+    }
+
+    /// <summary>Obtain the interleaved handle, then create its transfer context.</summary>
+    public static InterleavedTransferContext? GetInterleavedTransferContext(
+        in IntegralFormat input,
+        in IntegralFormat output,
+        int inputBlockCapacity,
+        int inputValueIndex,
+        int outputBlockCapacity,
+        int outputValueIndex)
+    {
+        IntegralConversionHandle handle = GetInterleavedHandle(input, output);
+        return InternalConversionDelegates.InterleavedTransferContext_Default(
+            handle, inputBlockCapacity, inputValueIndex, outputBlockCapacity, outputValueIndex);
+    }
+
+    /// <summary>
+    /// Interleaved transfer layout context using built-in context construction.
+    /// </summary>
+    public static InterleavedTransferContext? GetInterleavedTransferContext(
+        IntegralConversionHandle handle,
+        int inputBlockCapacity,
+        int inputValueIndex,
+        int outputBlockCapacity,
+        int outputValueIndex)
+    {
+        return InternalConversionDelegates.InterleavedTransferContext_Default(
+            handle, inputBlockCapacity, inputValueIndex, outputBlockCapacity, outputValueIndex);
     }
 }

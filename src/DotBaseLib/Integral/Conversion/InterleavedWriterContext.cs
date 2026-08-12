@@ -6,7 +6,7 @@ namespace DotBase.Integral.Conversion;
 /// <summary>
 /// Layout context for interleaved <b>writer</b> conversion: scatter dense serial
 /// input into one lane of each complete multi-value output block.
-/// Pass into <see cref="IntegralConversionHandle.Convert"/>.
+/// Call <see cref="ConversionContext.Convert"/> on this context.
 /// </summary>
 public sealed class InterleavedWriterContext
     : NumericConversionContext
