@@ -1,6 +1,11 @@
 ﻿namespace DotBase.Buffers;
 
 
+/// <summary>
+/// Byte-oriented ring-buffer operations. Operational conditions such as closure,
+/// insufficient data or space, and a valid request that cannot fit are reported by
+/// the returned byte count rather than by an exception. Malformed arguments still throw.
+/// </summary>
 public interface IByteRingBuffer
 {
     int ByteCapacity { get; }

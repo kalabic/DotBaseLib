@@ -1,7 +1,7 @@
-using DotBase.Integral;
-using DotBase.Integral.Internal;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using DotBase.Integral;
+using DotBase.Integral.Internal;
 
 namespace DotBase.Buffers.Integral.Internal.Endian;
 
@@ -14,492 +14,41 @@ internal sealed class WaitableRingBufferBE
     internal WaitableRingBufferBE(int capacity)
         : base(capacity)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(capacity);
     }
 
     public override ByteOrder ByteOrder => ByteOrder.BigEndian;
 
-    public override void AdvanceBy<T>(int count)
+    protected override int ReadIntegralSpan(in IntegralSpan destination)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
-        lock (_lock)
-        {
-            _storage.Advance(
-                checked((int)(
-                    (long)count * Unsafe.SizeOf<T>())));
-        }
+        return IntegralRingOperationsBE.Read(ref _storage, destination);
     }
 
-    public override int Read(in IntegralSpan destination)
+    protected override bool TryReadIntegralSpan(in IntegralSpan destination)
     {
-        lock (_lock)
-        {
-            long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(destination);
-            if (!_storage.IsOpen)
-            {
-                return 0;
-            }
-
-            WaitForBytes(requiredByteCount, nameof(destination));
-
-            return _storage.IsOpen
-                ? IntegralRingOperationsBE.Read(ref _storage, destination)
-                : 0;
-        }
+        return IntegralRingOperationsBE.TryRead(ref _storage, destination);
     }
 
-    public override bool TryRead(in IntegralSpan destination)
+    protected override bool TryReadIntegralSpanChecked(in IntegralSpan destination)
     {
-        lock (_lock)
-        {
-            return IntegralRingOperationsBE.TryRead(ref _storage, destination);
-        }
+        return IntegralRingOperationsBE.TryReadChecked(ref _storage, destination);
     }
 
-    public override int Write(in IntegralSpan source)
+    protected override int WriteIntegralSpan(in IntegralSpan source)
     {
-        lock (_lock)
-        {
-            int count = IntegralRingOperationsBE.Write(ref _storage, source);
-            if (count > 0)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return count;
-        }
+        return IntegralRingOperationsBE.Write(ref _storage, source);
     }
 
-    public override bool TryWrite(in IntegralSpan source)
+    protected override bool TryWriteIntegralSpan(in IntegralSpan source)
     {
-        lock (_lock)
-        {
-            bool completed = IntegralRingOperationsBE.TryWrite(ref _storage, source);
-            if (completed && source.ValueCount > 0)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return completed;
-        }
+        return IntegralRingOperationsBE.TryWrite(ref _storage, source);
     }
 
-    public override int ReadChecked(in IntegralSpan destination)
+    protected override bool TryWriteIntegralSpanChecked(in IntegralSpan source)
     {
-        lock (_lock)
-        {
-            _ = IntegralRingOperationsBE.ValidateSpan(
-                ref _storage,
-                destination,
-                nameof(destination));
-
-            long requiredByteCount = IntegralRingSpanOps.BlockCompleteByteCount(destination);
-            if (!_storage.IsOpen)
-            {
-                return 0;
-            }
-
-            WaitForBytes(requiredByteCount, nameof(destination));
-
-            return _storage.IsOpen
-                ? IntegralRingOperationsBE.Read(ref _storage, destination)
-                : 0;
-        }
+        return IntegralRingOperationsBE.TryWriteChecked(ref _storage, source);
     }
 
-    public override bool TryReadChecked(in IntegralSpan destination)
-    {
-        lock (_lock)
-        {
-            return IntegralRingOperationsBE.TryReadChecked(ref _storage, destination);
-        }
-    }
-
-    public override int WriteChecked(in IntegralSpan source)
-    {
-        lock (_lock)
-        {
-            int count = IntegralRingOperationsBE.WriteChecked(ref _storage, source);
-            if (count > 0)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return count;
-        }
-    }
-
-    public override bool TryWriteChecked(in IntegralSpan source)
-    {
-        lock (_lock)
-        {
-            bool completed = IntegralRingOperationsBE.TryWriteChecked(ref _storage, source);
-            if (completed && source.ValueCount > 0)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return completed;
-        }
-    }
-
-    public override int Read(byte[] data, int offset, int count)
-    {
-        ArgumentNullException.ThrowIfNull(data);
-        return ReadBytes(data.AsSpan(offset, count));
-    }
-
-    public override unsafe int Read(byte* data, int offset, int count)
-    {
-        IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        return ReadBytes(data + offset, count);
-    }
-
-    public override int Write(byte[] data, int offset, int count)
-    {
-        ArgumentNullException.ThrowIfNull(data);
-        return WriteBytes(data.AsSpan(offset, count));
-    }
-
-    public override unsafe int Write(byte* data, int offset, int count)
-    {
-        IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
-        return WriteBytes(data + offset, count);
-    }
-
-    public override unsafe T Read<T>()
-    {
-        int n = Unsafe.SizeOf<T>();
-
-        lock (_lock)
-        {
-            WaitForBytes(n, nameof(T));
-
-            if (_storage.IsOpen && TryReadScalar(out T value))
-            {
-                return value;
-            }
-        }
-
-        throw new InvalidOperationException(
-            "The ring was closed before a complete value became available.");
-    }
-
-    public override unsafe bool TryRead<T>(out T value)
-    {
-        lock (_lock)
-        {
-            return TryReadScalar(out value);
-        }
-    }
-
-    public override unsafe void Write<T>(T value)
-    {
-        lock (_lock)
-        {
-            if (!TryWriteScalar(value))
-            {
-                throw new InvalidOperationException(
-                    "The ring does not have enough free capacity for the requested value.");
-            }
-
-            Monitor.PulseAll(_lock);
-        }
-    }
-
-    public override unsafe bool TryWrite<T>(T value)
-    {
-        lock (_lock)
-        {
-            bool completed = TryWriteScalar(value);
-            if (completed)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return completed;
-        }
-    }
-
-    public override int Read<T>(T[] destination, int offset, int count)
-    {
-        ArgumentNullException.ThrowIfNull(destination);
-        return ReadValues(destination.AsSpan(offset, count));
-    }
-
-    public override unsafe int Read<T>(T* destination, int offset, int count)
-    {
-        IntegralBufferGuards.ValidatePointer(
-            destination,
-            offset,
-            count,
-            nameof(destination));
-
-        return ReadValues(new Span<T>(destination + offset, count));
-    }
-
-    public override int Write<T>(T[] source, int offset, int count)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        return Write((ReadOnlySpan<T>)source.AsSpan(offset, count));
-    }
-
-    public override unsafe int Write<T>(T* source, int offset, int count)
-    {
-        IntegralBufferGuards.ValidatePointer(source, offset, count, nameof(source));
-        return Write(new ReadOnlySpan<T>(source + offset, count));
-    }
-
-    public override bool TryRead<T>(T[] destination, int offset, int count)
-    {
-        ArgumentNullException.ThrowIfNull(destination);
-        return TryRead(destination.AsSpan(offset, count));
-    }
-
-    public override unsafe bool TryRead<T>(T* destination, int offset, int count)
-    {
-        IntegralBufferGuards.ValidatePointer(
-            destination,
-            offset,
-            count,
-            nameof(destination));
-
-        lock (_lock)
-        {
-            return TryReadCore(destination + offset, count);
-        }
-    }
-
-    public override unsafe bool TryRead<T>(Span<T> destination)
-    {
-        if (destination.IsEmpty)
-        {
-            lock (_lock)
-            {
-                return _storage.IsOpen;
-            }
-        }
-
-        fixed (T* dst = destination)
-        {
-            lock (_lock)
-            {
-                return TryReadCore(dst, destination.Length);
-            }
-        }
-    }
-
-    public override bool TryWrite<T>(T[] source, int offset, int count)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        return TryWrite((ReadOnlySpan<T>)source.AsSpan(offset, count));
-    }
-
-    public override unsafe bool TryWrite<T>(T* source, int offset, int count)
-    {
-        IntegralBufferGuards.ValidatePointer(source, offset, count, nameof(source));
-
-        lock (_lock)
-        {
-            bool completed = TryWriteCore(source + offset, count);
-            if (completed && count > 0)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return completed;
-        }
-    }
-
-    public override unsafe bool TryWrite<T>(ReadOnlySpan<T> source)
-    {
-        if (source.IsEmpty)
-        {
-            lock (_lock)
-            {
-                return _storage.IsOpen;
-            }
-        }
-
-        fixed (T* src = source)
-        {
-            lock (_lock)
-            {
-                bool completed = TryWriteCore(src, source.Length);
-                if (completed)
-                {
-                    Monitor.PulseAll(_lock);
-                }
-
-                return completed;
-            }
-        }
-    }
-
-    public override int Read<T>(Span<T> destination)
-    {
-        return ReadValues(destination);
-    }
-
-    public override unsafe int Write<T>(ReadOnlySpan<T> source)
-    {
-        if (source.IsEmpty)
-        {
-            return 0;
-        }
-
-        fixed (T* src = source)
-        {
-            lock (_lock)
-            {
-                int count = WriteCore(src, source.Length);
-                if (count > 0)
-                {
-                    Monitor.PulseAll(_lock);
-                }
-
-                return count;
-            }
-        }
-    }
-
-    public override void Advance(int count)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
-        lock (_lock)
-        {
-            _storage.Advance(count);
-        }
-    }
-
-    public override void ClearBuffer()
-    {
-        lock (_lock)
-        {
-            _storage.Clear();
-        }
-    }
-
-    public override void Close()
-    {
-        lock (_lock)
-        {
-            _storage.Close();
-            Monitor.PulseAll(_lock);
-        }
-    }
-
-    private int ReadBytes(Span<byte> destination)
-    {
-        lock (_lock)
-        {
-            WaitForBytes(destination.Length, nameof(destination));
-            if (!_storage.IsOpen)
-            {
-                return 0;
-            }
-
-            int n = Math.Min(destination.Length, _storage.StoredBytes);
-            return n == 0 ? 0 : _storage.Read(destination[..n]);
-        }
-    }
-
-    private int WriteBytes(ReadOnlySpan<byte> source)
-    {
-        lock (_lock)
-        {
-            int n = Math.Min(source.Length, _storage.FreeBytes);
-            if (n == 0)
-            {
-                return 0;
-            }
-
-            int count = _storage.Write(source[..n]);
-            if (count > 0)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return count;
-        }
-    }
-
-    private unsafe int ReadBytes(byte* destination, int byteCount)
-    {
-        lock (_lock)
-        {
-            WaitForBytes(byteCount, nameof(destination));
-            if (!_storage.IsOpen)
-            {
-                return 0;
-            }
-
-            int n = Math.Min(byteCount, _storage.StoredBytes);
-            return n == 0 ? 0 : _storage.Read(destination, n);
-        }
-    }
-
-    private unsafe int WriteBytes(byte* source, int byteCount)
-    {
-        lock (_lock)
-        {
-            int n = Math.Min(byteCount, _storage.FreeBytes);
-            if (n == 0)
-            {
-                return 0;
-            }
-
-            int count = _storage.Write(source, n);
-            if (count > 0)
-            {
-                Monitor.PulseAll(_lock);
-            }
-
-            return count;
-        }
-    }
-
-    private unsafe int ReadValues<T>(Span<T> destination)
-        where T : unmanaged
-    {
-        long requiredBytes = (long)destination.Length * Unsafe.SizeOf<T>();
-
-        if (destination.IsEmpty)
-        {
-            lock (_lock)
-            {
-                WaitForBytes(0, nameof(destination));
-                return 0;
-            }
-        }
-
-        fixed (T* dst = destination)
-        {
-            lock (_lock)
-            {
-                WaitForBytes(requiredBytes, nameof(destination));
-                return _storage.IsOpen
-                    ? ReadCore(dst, destination.Length)
-                    : 0;
-            }
-        }
-    }
-
-    private void WaitForBytes(long requiredBytes, string parameterName)
-    {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(
-            requiredBytes,
-            _storage.ByteCapacity,
-            parameterName);
-
-        while (_storage.IsOpen && _storage.StoredBytes < requiredBytes)
-        {
-            Monitor.Wait(_lock);
-        }
-    }
-
-    private unsafe bool TryReadScalar<T>(out T value)
-        where T : unmanaged
+    protected override unsafe bool TryReadScalar<T>(out T value)
     {
         int n = Unsafe.SizeOf<T>();
         if (!_storage.IsOpen || _storage.StoredBytes < n)
@@ -558,8 +107,7 @@ internal sealed class WaitableRingBufferBE
         return true;
     }
 
-    private unsafe bool TryWriteScalar<T>(T value)
-        where T : unmanaged
+    protected override unsafe bool TryWriteScalar<T>(T value)
     {
         int n = Unsafe.SizeOf<T>();
         if (!_storage.IsOpen || _storage.FreeBytes < n)
@@ -614,8 +162,7 @@ internal sealed class WaitableRingBufferBE
         return true;
     }
 
-    private unsafe int ReadCore<T>(T* destination, int count)
-        where T : unmanaged
+    protected override unsafe int ReadCore<T>(T* destination, int count)
     {
         if (count <= 0)
         {
@@ -642,8 +189,7 @@ internal sealed class WaitableRingBufferBE
         return elementCount;
     }
 
-    private unsafe bool TryReadCore<T>(T* destination, int count)
-        where T : unmanaged
+    protected override unsafe bool TryReadCore<T>(T* destination, int count)
     {
         long requiredBytes = (long)count * Unsafe.SizeOf<T>();
         if (!_storage.IsOpen || _storage.StoredBytes < requiredBytes)
@@ -656,8 +202,7 @@ internal sealed class WaitableRingBufferBE
         return true;
     }
 
-    private unsafe int WriteCore<T>(T* source, int count)
-        where T : unmanaged
+    protected override unsafe int WriteCore<T>(T* source, int count)
     {
         if (count <= 0)
         {
@@ -684,8 +229,7 @@ internal sealed class WaitableRingBufferBE
         return elementCount;
     }
 
-    private unsafe bool TryWriteCore<T>(T* source, int count)
-        where T : unmanaged
+    protected override unsafe bool TryWriteCore<T>(T* source, int count)
     {
         long requiredBytes = (long)count * Unsafe.SizeOf<T>();
         if (!_storage.IsOpen || _storage.FreeBytes < requiredBytes)

@@ -70,7 +70,7 @@ public class IntegralRingBufferTests
     }
 
     [Fact]
-    public unsafe void InvalidRawDescriptorsFailBeforeRingMutation()
+    public unsafe void CheckedRawDescriptorsSeparateCapacityFromValidation()
     {
         using IIntegralRingBuffer ring =
             IntegralRingBuffer.CreateUnlocked(
@@ -84,9 +84,7 @@ public class IntegralRingBufferTests
                 (byte*)sourcePtr,
                 sourceValues.Length,
                 IntegralType.Int32);
-            Assert.Throws<ArgumentOutOfRangeException>(
-                () => ring.TryWriteChecked(
-                    oversized));
+            Assert.False(ring.TryWriteChecked(oversized));
             Assert.Equal(0, ring.StoredBytes);
 
             IntegralSpan capacityMismatch =

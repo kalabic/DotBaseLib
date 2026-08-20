@@ -82,23 +82,27 @@ public interface IIntegralRingBuffer :
     bool TryWrite(in IntegralSpan source);
 
     /// <summary>
-    /// Validates <paramref name="destination"/> (format, geometry, size vs ring capacity),
-    /// then same policy as <see cref="Read"/>.
+    /// Structurally validates <paramref name="destination"/> (format, geometry,
+    /// alignment, and pointer metadata), then applies the same operational policy as
+    /// <see cref="Read"/>. Ring capacity is not part of descriptor validation.
     /// </summary>
     int ReadChecked(in IntegralSpan destination);
 
     /// <summary>
-    /// Validates <paramref name="destination"/>, then same policy as <see cref="TryRead"/>.
+    /// Structurally validates <paramref name="destination"/>, then applies the same
+    /// operational policy as <see cref="TryRead"/>.
     /// </summary>
     bool TryReadChecked(in IntegralSpan destination);
 
     /// <summary>
-    /// Validates <paramref name="source"/>, then same policy as <see cref="Write"/>.
+    /// Structurally validates <paramref name="source"/>, then applies the same
+    /// operational policy as <see cref="Write"/>.
     /// </summary>
     int WriteChecked(in IntegralSpan source);
 
     /// <summary>
-    /// Validates <paramref name="source"/>, then same policy as <see cref="TryWrite"/>.
+    /// Structurally validates <paramref name="source"/>, then applies the same
+    /// operational policy as <see cref="TryWrite"/>.
     /// </summary>
     bool TryWriteChecked(in IntegralSpan source);
 }

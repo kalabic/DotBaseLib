@@ -1,6 +1,10 @@
 namespace DotBase.Buffers.Integral;
 
 
+/// <summary>
+/// Immediate, atomic bulk operations. Each method transfers the complete request or
+/// returns <see langword="false"/> without mutation.
+/// </summary>
 public interface IAtomicBulkRingBuffer : IBulkRingBuffer
 {
     bool TryRead<T>(Span<T> destination)

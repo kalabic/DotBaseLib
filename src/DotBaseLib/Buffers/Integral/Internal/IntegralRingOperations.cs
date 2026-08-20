@@ -17,8 +17,7 @@ internal static unsafe class IntegralRingSpanOps
 {
     private const int ScratchByteCount = 512;
 
-    internal static int ValidateSpan(
-        ref RingBufferStorage storage,
+    internal static void ValidateSpan(
         in IntegralSpan span,
         string parameterName)
     {
@@ -37,7 +36,7 @@ internal static unsafe class IntegralRingSpanOps
         if (span.Length == 0 &&
             span.IntegralValueType == IntegralType.None)
         {
-            return 0;
+            return;
         }
 
         int valueByteCount = span.Format.ValueSize;
@@ -52,16 +51,6 @@ internal static unsafe class IntegralRingSpanOps
                 parameterName);
         }
 
-        if (span.Length > int.MaxValue ||
-            (storage.IsOpen && span.Length > storage.ByteCapacity))
-        {
-            throw new ArgumentOutOfRangeException(
-                parameterName,
-                span.Length,
-                "The requested byte size exceeds the ring capacity.");
-        }
-
-        return (int)span.Length;
     }
 
     /// <summary>
@@ -273,8 +262,7 @@ internal static class IntegralRingOperationsLE
         ref RingBufferStorage storage,
         in IntegralSpan destination)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             destination,
             nameof(destination));
         return Read(ref storage, destination);
@@ -309,8 +297,7 @@ internal static class IntegralRingOperationsLE
         ref RingBufferStorage storage,
         in IntegralSpan destination)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             destination,
             nameof(destination));
         return TryRead(ref storage, destination);
@@ -342,8 +329,7 @@ internal static class IntegralRingOperationsLE
         ref RingBufferStorage storage,
         in IntegralSpan source)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             source,
             nameof(source));
         return Write(ref storage, source);
@@ -378,21 +364,18 @@ internal static class IntegralRingOperationsLE
         ref RingBufferStorage storage,
         in IntegralSpan source)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             source,
             nameof(source));
         return TryWrite(ref storage, source);
     }
 
-    /// <summary>Delegates to shared validation (waitable rings call this).</summary>
-    internal static unsafe int ValidateSpan(
-        ref RingBufferStorage storage,
+    /// <summary>Delegates to shared structural validation.</summary>
+    internal static unsafe void ValidateSpan(
         in IntegralSpan span,
         string parameterName)
     {
-        return IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             span,
             parameterName);
     }
@@ -499,8 +482,7 @@ internal static class IntegralRingOperationsBE
         ref RingBufferStorage storage,
         in IntegralSpan destination)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             destination,
             nameof(destination));
         return Read(ref storage, destination);
@@ -535,8 +517,7 @@ internal static class IntegralRingOperationsBE
         ref RingBufferStorage storage,
         in IntegralSpan destination)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             destination,
             nameof(destination));
         return TryRead(ref storage, destination);
@@ -568,8 +549,7 @@ internal static class IntegralRingOperationsBE
         ref RingBufferStorage storage,
         in IntegralSpan source)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             source,
             nameof(source));
         return Write(ref storage, source);
@@ -604,21 +584,18 @@ internal static class IntegralRingOperationsBE
         ref RingBufferStorage storage,
         in IntegralSpan source)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             source,
             nameof(source));
         return TryWrite(ref storage, source);
     }
 
-    /// <summary>Delegates to shared validation (waitable rings call this).</summary>
-    internal static unsafe int ValidateSpan(
-        ref RingBufferStorage storage,
+    /// <summary>Delegates to shared structural validation.</summary>
+    internal static unsafe void ValidateSpan(
         in IntegralSpan span,
         string parameterName)
     {
-        return IntegralRingSpanOps.ValidateSpan(
-            ref storage,
+        IntegralRingSpanOps.ValidateSpan(
             span,
             parameterName);
     }

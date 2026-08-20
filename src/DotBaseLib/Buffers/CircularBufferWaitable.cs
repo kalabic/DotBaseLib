@@ -4,16 +4,16 @@ namespace DotBase.Buffers;
 
 
 /// <summary>
-///
 /// One producer and one consumer may operate concurrently, but overlapping Write calls
-/// or overlapping Read calls are not supported.
-///
+/// or overlapping Read calls are not supported. Fitting requests wait for the complete
+/// byte count. Valid requests larger than the current capacity, or requests terminated
+/// by closure, return <c>0</c>.
 /// </summary>
 public class CircularBufferWaitable : CircularBufferUnlocked
 {
     private readonly object _lock = new object();
 
-    private readonly SimpleWaitableValue<int> _storedByteCount = new();
+    private readonly WaitableHighLowMarkValue _storedByteCount = new();
 
     public CircularBufferWaitable(int size)
         : base(size)
@@ -52,8 +52,12 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     public override int Write(byte[] data, int offset, int length)
     {
-        // Cannot force write if requested length is larger than allocated buffer size.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
+        ArgumentNullException.ThrowIfNull(data);
+        _ = data.AsSpan(offset, length);
+        if (length > ByteCapacity)
+        {
+            return 0;
+        }
 
         while (true)
         {
@@ -80,8 +84,11 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     public override unsafe int Write(byte* data, int offset, int length)
     {
-        // Cannot force write if requested length is larger than allocated buffer size.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
+        ValidatePointer(data, offset, length, nameof(data));
+        if (length > ByteCapacity)
+        {
+            return 0;
+        }
 
         while (true)
         {
@@ -120,8 +127,12 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     public override int Read(byte[] data, int offset, int length)
     {
-        // Cannot force read if requested length is larger than allocated buffer size.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
+        ArgumentNullException.ThrowIfNull(data);
+        _ = data.AsSpan(offset, length);
+        if (length > ByteCapacity)
+        {
+            return 0;
+        }
 
         while (true)
         {
@@ -148,8 +159,11 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     public override unsafe int Read(byte* data, int offset, int length)
     {
-        // Cannot force read if requested length is larger than allocated buffer size.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteCapacity, nameof(length));
+        ValidatePointer(data, offset, length, nameof(data));
+        if (length > ByteCapacity)
+        {
+            return 0;
+        }
 
         while (true)
         {
@@ -187,6 +201,20 @@ public class CircularBufferWaitable : CircularBufferUnlocked
         {
             base.ClearBuffer();
             _storedByteCount.SetValue(StoredBytes);
+        }
+    }
+
+    private static unsafe void ValidatePointer(
+        byte* data,
+        int offset,
+        int length,
+        string parameterName)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        if (data is null && (offset != 0 || length != 0))
+        {
+            throw new ArgumentNullException(parameterName);
         }
     }
 }

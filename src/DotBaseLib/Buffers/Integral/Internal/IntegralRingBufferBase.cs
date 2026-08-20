@@ -46,7 +46,7 @@ internal abstract class IntegralRingBufferBase
     public abstract int Read(in IntegralSpan destination);
     public abstract int Read<T>(T[] destination, int offset, int count) where T : unmanaged;
     public abstract unsafe int Read<T>(T* destination, int offset, int count) where T : unmanaged;
-    public abstract T Read<T>() where T : unmanaged;
+    public abstract bool Read<T>(out T value) where T : unmanaged;
     public abstract int Read<T>(Span<T> destination) where T : unmanaged;
     public abstract int ReadChecked(in IntegralSpan destination);
     public abstract int StoredCount<T>() where T : unmanaged;
@@ -67,7 +67,7 @@ internal abstract class IntegralRingBufferBase
     public abstract int Write(in IntegralSpan source);
     public abstract int Write<T>(T[] source, int offset, int count) where T : unmanaged;
     public abstract unsafe int Write<T>(T* source, int offset, int count) where T : unmanaged;
-    public abstract void Write<T>(T value) where T : unmanaged;
+    public abstract bool Write<T>(T value) where T : unmanaged;
     public abstract int Write<T>(ReadOnlySpan<T> source) where T : unmanaged;
     public abstract int WriteChecked(in IntegralSpan source);
 }

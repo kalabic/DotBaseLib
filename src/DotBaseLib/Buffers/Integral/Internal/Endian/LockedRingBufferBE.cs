@@ -140,18 +140,12 @@ internal sealed class LockedRingBufferBE
         }
     }
 
-    public override unsafe T Read<T>()
+    public override unsafe bool Read<T>(out T value)
     {
         lock (_lock)
         {
-            if (TryReadScalar(out T value))
-            {
-                return value;
-            }
+            return TryReadScalar(out value);
         }
-
-        throw new InvalidOperationException(
-            "The ring does not contain a complete value of the requested type.");
     }
 
     public override unsafe bool TryRead<T>(out T value)
@@ -162,15 +156,11 @@ internal sealed class LockedRingBufferBE
         }
     }
 
-    public override unsafe void Write<T>(T value)
+    public override unsafe bool Write<T>(T value)
     {
         lock (_lock)
         {
-            if (!TryWriteScalar(value))
-            {
-                throw new InvalidOperationException(
-                    "The ring does not have enough free capacity for the requested value.");
-            }
+            return TryWriteScalar(value);
         }
     }
 

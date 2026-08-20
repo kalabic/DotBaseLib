@@ -80,9 +80,76 @@ public class IntegralRingBufferEdgeTests
         return data;
     }
 
+    public static TheoryData<RingKind> NonWaitableKinds()
+    {
+        return
+        [
+            RingKind.Unlocked,
+            RingKind.Locked,
+        ];
+    }
+
+    public static TheoryData<RingKind, ByteOrder> NonWaitableKindsBothEndians()
+    {
+        TheoryData<RingKind, ByteOrder> data = [];
+        data.Add(RingKind.Unlocked, ByteOrder.LittleEndian);
+        data.Add(RingKind.Unlocked, ByteOrder.BigEndian);
+        data.Add(RingKind.Locked, ByteOrder.LittleEndian);
+        data.Add(RingKind.Locked, ByteOrder.BigEndian);
+        return data;
+    }
+
     // -------------------------------------------------------------------------
     // IntegralSpan round-trip: host-native span vs foreign ring (must swap)
     // -------------------------------------------------------------------------
+
+    [Theory]
+    [MemberData(nameof(NonWaitableKindsBothEndians))]
+    public unsafe void CheckedSpan_CapacityIsOperationalNotStructural(
+        RingKind kind,
+        ByteOrder ringOrder)
+    {
+        int[] source = [11, 22, 33];
+        int[] destination = [-1, -1, -1];
+
+        fixed (int* sourcePtr = source)
+        fixed (int* destinationPtr = destination)
+        {
+            IntegralSpan sourceSpan = IntegralTestData.CreateSpan(
+                (byte*)sourcePtr,
+                source.Length,
+                IntegralType.Int32,
+                ByteOrder.Native);
+            IntegralSpan destinationSpan = IntegralTestData.CreateSpan(
+                (byte*)destinationPtr,
+                destination.Length,
+                IntegralType.Int32,
+                ByteOrder.Native);
+
+            using (IIntegralRingBuffer ring = Create(
+                kind,
+                2 * sizeof(int),
+                ringOrder))
+            {
+                Assert.Equal(2, ring.WriteChecked(sourceSpan));
+                Assert.Equal(2, ring.ReadChecked(destinationSpan));
+                Assert.Equal([11, 22, -1], destination);
+            }
+
+            using (IIntegralRingBuffer ring = Create(
+                kind,
+                2 * sizeof(int),
+                ringOrder))
+            {
+                Assert.False(ring.TryWriteChecked(sourceSpan));
+                Assert.Equal(0, ring.StoredBytes);
+
+                Assert.Equal(2, ring.Write((ReadOnlySpan<int>)source.AsSpan(0, 2)));
+                Assert.False(ring.TryReadChecked(destinationSpan));
+                Assert.Equal(2 * sizeof(int), ring.StoredBytes);
+            }
+        }
+    }
 
     [Theory]
     [MemberData(nameof(AllKindsBothEndians))]
@@ -269,7 +336,7 @@ public class IntegralRingBufferEdgeTests
     // -------------------------------------------------------------------------
 
     [Theory]
-    [MemberData(nameof(AllKinds))]
+    [MemberData(nameof(NonWaitableKinds))]
     public unsafe void PartialWrite_ThenPartialRead_SpanAndTypedAgree(RingKind kind)
     {
         using IIntegralRingBuffer ring = Create(kind, 3 * sizeof(int), Foreign);
@@ -459,7 +526,7 @@ public class IntegralRingBufferEdgeTests
     {
         using IIntegralRingBuffer ring = Create(kind, 16 * sizeof(int), ringOrder);
 
-        ring.Write(100);
+        Assert.True(ring.Write(100));
         Assert.Equal(2, ring.Write((ReadOnlySpan<int>)new[] { 200, 300 }));
 
         int[] chunk = [400, 500, 600];
@@ -630,6 +697,279 @@ public class IntegralRingBufferEdgeTests
         finally
         {
             pin.Free();
+        }
+    }
+
+    [Fact]
+    public void Waitable_Read_AfterClose_ReturnsZero()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            4 * sizeof(int),
+            Native);
+        Assert.True(ring.TryWrite(1));
+        ring.Close();
+
+        byte[] bytes = new byte[4];
+        Assert.Equal(0, ring.Read(bytes, 0, bytes.Length));
+
+        int[] dest = new int[1];
+        Assert.Equal(0, ring.Read(dest.AsSpan()));
+    }
+
+    [Fact]
+    public unsafe void Waitable_IntegralSpanRead_AfterClose_ReturnsZero()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            4 * sizeof(int),
+            Native);
+        ring.Close();
+
+        int[] dest = new int[1];
+        fixed (int* p = dest)
+        {
+            IntegralSpan dst = IntegralTestData.CreateSpan(
+                (byte*)p,
+                1,
+                IntegralType.Int32,
+                ByteOrder.Native);
+            Assert.Equal(0, ring.Read(dst));
+        }
+    }
+
+    [Fact]
+    public void Waitable_ScalarRead_AfterClose_ReturnsFalseAndDefault()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            sizeof(int),
+            Native);
+        ring.Close();
+        int value = 42;
+        Assert.False(ring.Read(out value));
+        Assert.Equal(default, value);
+    }
+
+    [Fact]
+    public async Task Waitable_Read_CloseUnblocksWaiter()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            4 * sizeof(int),
+            Native);
+        int[] dest = new int[2];
+        using ManualResetEventSlim started = new();
+
+        Task<int> readTask = Task.Run(() =>
+        {
+            started.Set();
+            return ring.Read(dest.AsSpan());
+        });
+
+        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
+        await Task.Delay(40);
+        Assert.False(readTask.IsCompleted);
+
+        ring.Close();
+        Assert.Equal(0, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task Waitable_Write_WaitsUntilFreeSpace()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            2 * sizeof(int),
+            Foreign);
+        Assert.True(ring.TryWrite(1));
+        Assert.True(ring.TryWrite(2));
+
+        int[] source = [3, 4];
+        using ManualResetEventSlim started = new();
+        Task<int> writeTask = Task.Run(() =>
+        {
+            started.Set();
+            return ring.Write((ReadOnlySpan<int>)source);
+        });
+
+        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
+        await Task.Delay(40);
+        Assert.False(writeTask.IsCompleted);
+
+        int[] drained = new int[2];
+        Assert.Equal(2, ring.Read(drained.AsSpan()));
+        Assert.Equal(new[] { 1, 2 }, drained);
+
+        Assert.Equal(2, await writeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(2 * sizeof(int), ring.StoredBytes);
+    }
+
+    [Fact]
+    public async Task Waitable_IntegralSpanWrite_BlocksUntilFreeSpace()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            2 * sizeof(int),
+            Foreign);
+        Assert.True(ring.TryWrite(1));
+        Assert.True(ring.TryWrite(2));
+
+        int[] source = [7, 8];
+        GCHandle pin = GCHandle.Alloc(source, GCHandleType.Pinned);
+        try
+        {
+            IntegralSpan src;
+            unsafe
+            {
+                byte* p = (byte*)pin.AddrOfPinnedObject();
+                src = IntegralTestData.CreateSpan(
+                    p,
+                    2,
+                    IntegralType.Int32,
+                    ByteOrder.Native);
+            }
+
+            using ManualResetEventSlim started = new();
+            Task<int> writeTask = Task.Run(() =>
+            {
+                started.Set();
+                return ring.Write(src);
+            });
+
+            Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
+            await Task.Delay(40);
+            Assert.False(writeTask.IsCompleted);
+
+            Assert.Equal(2, ring.Read(new int[2].AsSpan()));
+            Assert.Equal(2, await writeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public async Task Waitable_Write_CloseUnblocksWaiter()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            sizeof(int),
+            Native);
+        Assert.True(ring.TryWrite(1));
+
+        int[] source = [2];
+        using ManualResetEventSlim started = new();
+        Task<int> writeTask = Task.Run(() =>
+        {
+            started.Set();
+            return ring.Write((ReadOnlySpan<int>)source);
+        });
+
+        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
+        await Task.Delay(40);
+        Assert.False(writeTask.IsCompleted);
+
+        ring.Close();
+        Assert.Equal(0, await writeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void Waitable_ScalarWrite_AfterClose_ReturnsFalse()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            sizeof(int),
+            Native);
+        ring.Close();
+        Assert.False(ring.Write(1));
+    }
+
+    [Fact]
+    public void Waitable_ZeroCapacity_BlockingReadWriteReturnZero()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(0, Native);
+        byte[] one = [1];
+        Assert.Equal(0, ring.Read(one, 0, 1));
+        Assert.Equal(0, ring.Write(one, 0, 1));
+    }
+
+    [Fact]
+    public void Waitable_RequestLargerThanCapacity_ReturnsZero()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            sizeof(int),
+            Native);
+        int[] two = new int[2];
+        Assert.Equal(0, ring.Read(two.AsSpan()));
+        Assert.Equal(0, ring.Write((ReadOnlySpan<int>)two));
+        Assert.Equal(0, ring.StoredBytes);
+        Assert.Equal(sizeof(int), ring.FreeBytes);
+    }
+
+    [Fact]
+    public void Waitable_PartialWriteLargerThanCapacity_ReturnsZero()
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            3 * sizeof(int),
+            Foreign);
+        int[] src = [11, 22, 33, 44];
+        Assert.Equal(0, ring.Write((ReadOnlySpan<int>)src));
+        Assert.Equal(3, ring.Write((ReadOnlySpan<int>)src.AsSpan(0, 3)));
+    }
+
+    [Fact]
+    public unsafe void Waitable_AllOversizedApiFamiliesFailWithoutMutation()
+    {
+        foreach (ByteOrder ringOrder in new[]
+                 {
+                     ByteOrder.LittleEndian,
+                     ByteOrder.BigEndian,
+                 })
+        {
+            using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+                sizeof(int),
+                ringOrder);
+            byte[] bytes = new byte[sizeof(int) + 1];
+            int[] values = [11, 22];
+
+            fixed (byte* bytePtr = bytes)
+            fixed (int* valuePtr = values)
+            {
+                IntegralSpan integralSpan = IntegralTestData.CreateSpan(
+                    (byte*)valuePtr,
+                    values.Length,
+                    IntegralType.Int32,
+                    ByteOrder.Native);
+
+                Assert.Equal(0, ring.Write(bytes, 0, bytes.Length));
+                Assert.Equal(0, ring.Write(bytePtr, 0, bytes.Length));
+                Assert.Equal(0, ring.Write(values, 0, values.Length));
+                Assert.Equal(0, ring.Write(valuePtr, 0, values.Length));
+                Assert.Equal(0, ring.Write((ReadOnlySpan<int>)values));
+                Assert.Equal(0, ring.Write(integralSpan));
+                Assert.Equal(0, ring.WriteChecked(integralSpan));
+                Assert.False(ring.TryWrite(values, 0, values.Length));
+                Assert.False(ring.TryWrite(valuePtr, 0, values.Length));
+                Assert.False(ring.TryWrite((ReadOnlySpan<int>)values));
+                Assert.False(ring.TryWrite(integralSpan));
+                Assert.False(ring.TryWriteChecked(integralSpan));
+                Assert.Equal(0, ring.StoredBytes);
+                Assert.Equal(sizeof(int), ring.FreeBytes);
+
+                Assert.True(ring.Write(123));
+
+                Assert.Equal(0, ring.Read(bytes, 0, bytes.Length));
+                Assert.Equal(0, ring.Read(bytePtr, 0, bytes.Length));
+                Assert.Equal(0, ring.Read(values, 0, values.Length));
+                Assert.Equal(0, ring.Read(valuePtr, 0, values.Length));
+                Assert.Equal(0, ring.Read(values.AsSpan()));
+                Assert.Equal(0, ring.Read(integralSpan));
+                Assert.Equal(0, ring.ReadChecked(integralSpan));
+                Assert.False(ring.TryRead(values, 0, values.Length));
+                Assert.False(ring.TryRead(valuePtr, 0, values.Length));
+                Assert.False(ring.TryRead(values.AsSpan()));
+                Assert.False(ring.TryRead(integralSpan));
+                Assert.False(ring.TryReadChecked(integralSpan));
+                Assert.Equal(sizeof(int), ring.StoredBytes);
+                Assert.Equal(0, ring.FreeBytes);
+            }
+
+            Assert.True(ring.Read(out int value));
+            Assert.Equal(123, value);
         }
     }
 

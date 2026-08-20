@@ -238,12 +238,13 @@ public unsafe class RingBufferStorageTests
             int[] values = [0, 1, -1, 0x01020304, unchecked((int)0xFFEEDDCC)];
             foreach (int v in values)
             {
-                ring.Write(v);
+                Assert.True(ring.Write(v));
             }
 
             foreach (int expected in values)
             {
-                Assert.Equal(expected, ring.Read<int>());
+                Assert.True(ring.Read(out int actual));
+                Assert.Equal(expected, actual);
             }
         }
     }

@@ -185,8 +185,7 @@ internal abstract unsafe class UnlockedRingBuffer
     /// </summary>
     public override int ReadChecked(in IntegralSpan destination)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref _storage,
+        IntegralRingSpanOps.ValidateSpan(
             destination,
             nameof(destination));
         return Read(destination);
@@ -197,8 +196,7 @@ internal abstract unsafe class UnlockedRingBuffer
     /// </summary>
     public override bool TryReadChecked(in IntegralSpan destination)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref _storage,
+        IntegralRingSpanOps.ValidateSpan(
             destination,
             nameof(destination));
         return TryRead(destination);
@@ -209,8 +207,7 @@ internal abstract unsafe class UnlockedRingBuffer
     /// </summary>
     public override int WriteChecked(in IntegralSpan source)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref _storage,
+        IntegralRingSpanOps.ValidateSpan(
             source,
             nameof(source));
         return Write(source);
@@ -221,8 +218,7 @@ internal abstract unsafe class UnlockedRingBuffer
     /// </summary>
     public override bool TryWriteChecked(in IntegralSpan source)
     {
-        _ = IntegralRingSpanOps.ValidateSpan(
-            ref _storage,
+        IntegralRingSpanOps.ValidateSpan(
             source,
             nameof(source));
         return TryWrite(source);
@@ -258,16 +254,7 @@ internal abstract unsafe class UnlockedRingBuffer
         return n == 0 ? 0 : _storage.Write(data + offset, n);
     }
 
-    public override T Read<T>()
-    {
-        if (TryRead(out T value))
-        {
-            return value;
-        }
-
-        throw new InvalidOperationException(
-            "The ring does not contain a complete value of the requested type.");
-    }
+    public override bool Read<T>(out T value) => TryRead(out value);
 
     public override bool TryRead<T>(out T value)
     {
@@ -325,14 +312,7 @@ internal abstract unsafe class UnlockedRingBuffer
         return true;
     }
 
-    public override void Write<T>(T value)
-    {
-        if (!TryWrite(value))
-        {
-            throw new InvalidOperationException(
-                "The ring does not have enough free capacity for the requested value.");
-        }
-    }
+    public override bool Write<T>(T value) => TryWrite(value);
 
     public override bool TryWrite<T>(T value)
     {
