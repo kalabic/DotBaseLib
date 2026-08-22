@@ -1,5 +1,5 @@
+using DotBase;
 using DotBase.AsyncValue;
-using DotBase.Tools;
 
 namespace DotBaseLib.Tests;
 
@@ -9,28 +9,28 @@ public class AsyncWaitableLongValueTests
     [Fact]
     public void MutationsReturnCurrentValue()
     {
-        using WaitableHighLowMarkValue value = new();
+        using SimpleWaitableLongValue value = new();
 
         Assert.Equal(5, value.SetValue(5));
-        Assert.Equal(8, value.Increase(3));
-        Assert.Equal(6, value.Decrease(2));
+        Assert.Equal(8, value.IncreaseValue(3));
+        Assert.Equal(6, value.DecreaseValue(2));
     }
 
     [Fact]
     public async Task SupportsMultipleIndependentWaiters()
     {
-        using WaitableHighLowMarkValue value = new();
+        using SimpleWaitableLongValue value = new();
         using CountdownEvent started = new(3);
 
         Task<LongResult> firstHighWait = StartWait(
             started,
-            () => value.WaitHighMarkValue(3));
+            () => value.WaitGreaterOrEqualTo(3));
         Task<LongResult> secondHighWait = StartWait(
             started,
-            () => value.WaitHighMarkValue(5));
+            () => value.WaitGreaterOrEqualTo(5));
         Task<LongResult> lowWait = StartWait(
             started,
-            () => value.WaitLowMarkValue(-2));
+            () => value.WaitLessOrEqualTo(-2));
 
         Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
         await Task.Delay(50);
@@ -54,11 +54,11 @@ public class AsyncWaitableLongValueTests
     [Fact]
     public async Task ClosingAndDisposingCompletePendingWaitsWithStableStatuses()
     {
-        WaitableHighLowMarkValue value = new();
+        SimpleWaitableLongValue value = new();
         using CountdownEvent closedWaitStarted = new(1);
         Task<LongResult> closedWait = StartWait(
             closedWaitStarted,
-            () => value.WaitHighMarkValue(1));
+            () => value.WaitGreaterOrEqualTo(1));
 
         Assert.True(closedWaitStarted.Wait(TimeSpan.FromSeconds(2)));
         await Task.Delay(50);
@@ -73,7 +73,7 @@ public class AsyncWaitableLongValueTests
         using CountdownEvent disposedWaitStarted = new(1);
         Task<LongResult> disposedWait = StartWait(
             disposedWaitStarted,
-            () => value.WaitLowMarkValue(-1));
+            () => value.WaitLessOrEqualTo(-1));
 
         Assert.True(disposedWaitStarted.Wait(TimeSpan.FromSeconds(2)));
         await Task.Delay(50);
@@ -82,21 +82,21 @@ public class AsyncWaitableLongValueTests
         LongResult disposed = await disposedWait.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(ResultStatus.DISPOSED, disposed.Status);
         Assert.Throws<ObjectDisposedException>(() => value.SetValue(1));
-        Assert.Throws<ObjectDisposedException>(() => value.Increase(1));
-        Assert.Throws<ObjectDisposedException>(() => value.Decrease(1));
+        Assert.Throws<ObjectDisposedException>(() => value.IncreaseValue(1));
+        Assert.Throws<ObjectDisposedException>(() => value.DecreaseValue(1));
     }
 
     [Fact]
     public async Task RangedConstructorRejectsTargetsOutsideRange()
     {
-        using WaitableHighLowMarkValue value = new(0, 10, 0);
+        using SimpleWaitableLongValue value = new(new LongValueRange(0, 10), 0);
 
         Assert.Equal(0, value.Value);
-        Assert.Equal(ResultStatus.OUT_OF_RANGE, value.WaitHighMarkValue(11).Status);
-        Assert.Equal(ResultStatus.OUT_OF_RANGE, value.WaitLowMarkValue(-1).Status);
+        Assert.Equal(ResultStatus.OUT_OF_RANGE, value.WaitGreaterOrEqualTo(11).Status);
+        Assert.Equal(ResultStatus.OUT_OF_RANGE, value.WaitLessOrEqualTo(-1).Status);
 
         using CountdownEvent started = new(1);
-        Task<LongResult> highWait = StartWait(started, () => value.WaitHighMarkValue(10));
+        Task<LongResult> highWait = StartWait(started, () => value.WaitGreaterOrEqualTo(10));
         Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
         await Task.Delay(50);
         Assert.False(highWait.IsCompleted);
@@ -108,9 +108,9 @@ public class AsyncWaitableLongValueTests
     [Fact]
     public async Task SetRangeCompletesWaitersWhoseTargetLeavesTheRange()
     {
-        using WaitableHighLowMarkValue value = new(0, 100, 0);
+        using SimpleWaitableLongValue value = new(new LongValueRange(0, 100), 0);
         using CountdownEvent started = new(1);
-        Task<LongResult> highWait = StartWait(started, () => value.WaitHighMarkValue(10));
+        Task<LongResult> highWait = StartWait(started, () => value.WaitGreaterOrEqualTo(10));
 
         Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
         await Task.Delay(50);
@@ -126,9 +126,9 @@ public class AsyncWaitableLongValueTests
     [Fact]
     public async Task SetValueAndRangeUpdatesValueAndWakesWaiters()
     {
-        using WaitableHighLowMarkValue value = new(0, 100, 0);
+        using SimpleWaitableLongValue value = new(new LongValueRange(0, 100), 0);
         using CountdownEvent started = new(1);
-        Task<LongResult> highWait = StartWait(started, () => value.WaitHighMarkValue(3));
+        Task<LongResult> highWait = StartWait(started, () => value.WaitGreaterOrEqualTo(3));
 
         Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
         await Task.Delay(50);
@@ -142,7 +142,7 @@ public class AsyncWaitableLongValueTests
     [Fact]
     public void SetRangeAndSetValueAndRangeRejectValueOutsideRange()
     {
-        using WaitableHighLowMarkValue value = new(0, 10, 5);
+        using SimpleWaitableLongValue value = new(new LongValueRange(0, 10), 5);
 
         Assert.Throws<ArgumentOutOfRangeException>(
             () => value.SetRange(new LongValueRange(0, 3)));
@@ -155,7 +155,7 @@ public class AsyncWaitableLongValueTests
     public void RangedConstructorRequiresValueInsideRange()
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new WaitableHighLowMarkValue(0, 10, 11));
+            () => new SimpleWaitableLongValue(new LongValueRange(0, 10), 11));
     }
 
     private static Task<LongResult> StartWait(

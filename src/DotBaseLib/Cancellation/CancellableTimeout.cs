@@ -136,7 +136,7 @@ internal class CancellableTimeout
         }
     }
 
-    private void InvokeResult(Result result, int timeout, CancellationToken cancellation, object? context)
+    private void LongResult(Result result, int timeout, CancellationToken cancellation, object? context)
     {
         bool publish;
         lock (_lock)
@@ -233,12 +233,12 @@ internal class CancellableTimeout
 
     private void CancellationTriggered(object? sender, ResettableCancellationSignal.CancellationSignal ev)
     {
-        InvokeResult(Result.Cancelled, 0, ev.Token, sender);
+        LongResult(Result.Cancelled, 0, ev.Token, sender);
     }
 
     private void TimeoutTriggered(object? sender, ResettableTimeoutSignal.TimeoutSignal ev)
     {
-        InvokeResult(Result.Timeout, ev.Timeout, CancellationToken.None, sender);
+        LongResult(Result.Timeout, ev.Timeout, CancellationToken.None, sender);
     }
 
     private void PublishResult(Result result, int timeout, CancellationToken cancellation, object? context)

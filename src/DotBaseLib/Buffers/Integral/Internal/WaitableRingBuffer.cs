@@ -1,12 +1,11 @@
 using System.Runtime.CompilerServices;
 using DotBase.AsyncValue;
 using DotBase.Integral;
-using DotBase.Tools;
 
 namespace DotBase.Buffers.Integral.Internal;
 
 
-internal abstract unsafe class WaitableRingBuffer
+internal abstract class WaitableRingBuffer
     : IntegralRingBufferBase
     , IWaitableRingBuffer
 {
@@ -14,13 +13,21 @@ internal abstract unsafe class WaitableRingBuffer
 
     protected readonly int _byteCapacity;
 
-    private readonly WaitableHighLowMarkValue _storedByteCount;
+    private readonly AsyncWaitableValue _storedByteCount;
+
+    private bool _isWritingCompleted;
+
+    private bool _isReadingCompleted;
+
+    private bool _isAborted;
+
+    private Exception? _abortError;
 
     internal WaitableRingBuffer(int capacity)
         : base(capacity)
     {
         _byteCapacity = capacity;
-        _storedByteCount = new WaitableHighLowMarkValue(0, capacity, 0);
+        _storedByteCount = new AsyncWaitableValue();
         if (!_storage.IsOpen)
         {
             _storedByteCount.Close();
@@ -70,6 +77,82 @@ internal abstract unsafe class WaitableRingBuffer
     public long TotalWritten
     {
         get { lock (_lock) { return _storage.TotalWritten; } }
+    }
+
+    public bool IsWritingCompleted
+    {
+        get { lock (_lock) { return _isWritingCompleted; } }
+    }
+
+    public bool IsReadingCompleted
+    {
+        get { lock (_lock) { return _isReadingCompleted; } }
+    }
+
+    public bool IsDrained
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _isWritingCompleted && _storage.StoredBytes == 0;
+            }
+        }
+    }
+
+    public bool IsAborted
+    {
+        get { lock (_lock) { return _isAborted; } }
+    }
+
+    public Exception? AbortError
+    {
+        get { lock (_lock) { return _abortError; } }
+    }
+
+    public void CompleteWriting()
+    {
+        lock (_lock)
+        {
+            if (!_storage.IsOpen || _isAborted || _isWritingCompleted)
+            {
+                return;
+            }
+
+            _isWritingCompleted = true;
+            WakeLifecycleWaitersLocked();
+        }
+    }
+
+    public void CompleteReading()
+    {
+        lock (_lock)
+        {
+            if (!_storage.IsOpen || _isAborted || _isReadingCompleted)
+            {
+                return;
+            }
+
+            _isReadingCompleted = true;
+            _storage.Clear();
+            WakeLifecycleWaitersLocked();
+        }
+    }
+
+    public void Abort(Exception? error = null)
+    {
+        lock (_lock)
+        {
+            if (!_storage.IsOpen || _isAborted)
+            {
+                return;
+            }
+
+            _isAborted = true;
+            _abortError = error;
+            _storage.Clear();
+            WakeLifecycleWaitersLocked();
+        }
     }
 
     public override int CapacityAs<T>()
@@ -150,6 +233,11 @@ internal abstract unsafe class WaitableRingBuffer
     {
         lock (_lock)
         {
+            if (!IsReadingAllowedLocked())
+            {
+                return false;
+            }
+
             bool completed = TryReadIntegralSpan(destination);
             if (completed)
             {
@@ -162,9 +250,16 @@ internal abstract unsafe class WaitableRingBuffer
 
     public override bool TryReadChecked(in IntegralSpan destination)
     {
+        IntegralRingSpanOps.ValidateSpan(destination, nameof(destination));
+
         lock (_lock)
         {
-            bool completed = TryReadIntegralSpanChecked(destination);
+            if (!IsReadingAllowedLocked())
+            {
+                return false;
+            }
+
+            bool completed = TryReadIntegralSpan(destination);
             if (completed)
             {
                 PublishStoredLocked();
@@ -188,6 +283,11 @@ internal abstract unsafe class WaitableRingBuffer
     {
         lock (_lock)
         {
+            if (!IsWritingAllowedLocked())
+            {
+                return false;
+            }
+
             bool completed = TryWriteIntegralSpan(source);
             if (completed)
             {
@@ -200,9 +300,16 @@ internal abstract unsafe class WaitableRingBuffer
 
     public override bool TryWriteChecked(in IntegralSpan source)
     {
+        IntegralRingSpanOps.ValidateSpan(source, nameof(source));
+
         lock (_lock)
         {
-            bool completed = TryWriteIntegralSpanChecked(source);
+            if (!IsWritingAllowedLocked())
+            {
+                return false;
+            }
+
+            bool completed = TryWriteIntegralSpan(source);
             if (completed)
             {
                 PublishStoredLocked();
@@ -218,7 +325,7 @@ internal abstract unsafe class WaitableRingBuffer
         return ReadBytes(data.AsSpan(offset, count));
     }
 
-    public override int Read(byte* data, int offset, int count)
+    public override unsafe int Read(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
         return ReadBytes(data + offset, count);
@@ -230,7 +337,7 @@ internal abstract unsafe class WaitableRingBuffer
         return WriteBytes(data.AsSpan(offset, count));
     }
 
-    public override int Write(byte* data, int offset, int count)
+    public override unsafe int Write(byte* data, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(data, offset, count, nameof(data));
         return WriteBytes(data + offset, count);
@@ -250,7 +357,7 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsReadingAllowedLocked())
                 {
                     value = default;
                     return false;
@@ -261,13 +368,15 @@ internal abstract unsafe class WaitableRingBuffer
                     PublishStoredLocked();
                     return true;
                 }
+
+                if (_isWritingCompleted)
+                {
+                    value = default;
+                    return false;
+                }
             }
 
-            if (!ContinueAfterWait(WaitForStoredBytes(n)))
-            {
-                value = default;
-                return false;
-            }
+            _ = WaitForStoredBytes(n);
         }
     }
 
@@ -275,6 +384,12 @@ internal abstract unsafe class WaitableRingBuffer
     {
         lock (_lock)
         {
+            if (!IsReadingAllowedLocked())
+            {
+                value = default;
+                return false;
+            }
+
             bool completed = TryReadScalar(out value);
             if (completed)
             {
@@ -298,7 +413,7 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsWritingAllowedLocked())
                 {
                     return false;
                 }
@@ -310,10 +425,7 @@ internal abstract unsafe class WaitableRingBuffer
                 }
             }
 
-            if (!ContinueAfterWait(WaitForFreeBytes(n)))
-            {
-                return false;
-            }
+            _ = WaitForFreeBytes(n);
         }
     }
 
@@ -321,6 +433,11 @@ internal abstract unsafe class WaitableRingBuffer
     {
         lock (_lock)
         {
+            if (!IsWritingAllowedLocked())
+            {
+                return false;
+            }
+
             bool completed = TryWriteScalar(value);
             if (completed)
             {
@@ -337,7 +454,7 @@ internal abstract unsafe class WaitableRingBuffer
         return ReadValues(destination.AsSpan(offset, count));
     }
 
-    public override int Read<T>(T* destination, int offset, int count)
+    public override unsafe int Read<T>(T* destination, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(
             destination,
@@ -354,7 +471,7 @@ internal abstract unsafe class WaitableRingBuffer
         return Write((ReadOnlySpan<T>)source.AsSpan(offset, count));
     }
 
-    public override int Write<T>(T* source, int offset, int count)
+    public override unsafe int Write<T>(T* source, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(source, offset, count, nameof(source));
         return Write(new ReadOnlySpan<T>(source + offset, count));
@@ -366,7 +483,7 @@ internal abstract unsafe class WaitableRingBuffer
         return TryRead(destination.AsSpan(offset, count));
     }
 
-    public override bool TryRead<T>(T* destination, int offset, int count)
+    public override unsafe bool TryRead<T>(T* destination, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(
             destination,
@@ -381,6 +498,11 @@ internal abstract unsafe class WaitableRingBuffer
 
         lock (_lock)
         {
+            if (!IsReadingAllowedLocked())
+            {
+                return false;
+            }
+
             bool completed = TryReadCore(destination + offset, count);
             if (completed)
             {
@@ -391,13 +513,13 @@ internal abstract unsafe class WaitableRingBuffer
         }
     }
 
-    public override bool TryRead<T>(Span<T> destination)
+    public override unsafe bool TryRead<T>(Span<T> destination)
     {
         if (destination.IsEmpty)
         {
             lock (_lock)
             {
-                return _storage.IsOpen;
+                return IsReadingAllowedLocked();
             }
         }
 
@@ -410,6 +532,11 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
+                if (!IsReadingAllowedLocked())
+                {
+                    return false;
+                }
+
                 bool completed = TryReadCore(dst, destination.Length);
                 if (completed)
                 {
@@ -427,7 +554,7 @@ internal abstract unsafe class WaitableRingBuffer
         return TryWrite((ReadOnlySpan<T>)source.AsSpan(offset, count));
     }
 
-    public override bool TryWrite<T>(T* source, int offset, int count)
+    public override unsafe bool TryWrite<T>(T* source, int offset, int count)
     {
         IntegralBufferGuards.ValidatePointer(source, offset, count, nameof(source));
 
@@ -438,6 +565,11 @@ internal abstract unsafe class WaitableRingBuffer
 
         lock (_lock)
         {
+            if (!IsWritingAllowedLocked())
+            {
+                return false;
+            }
+
             bool completed = TryWriteCore(source + offset, count);
             if (completed)
             {
@@ -448,13 +580,13 @@ internal abstract unsafe class WaitableRingBuffer
         }
     }
 
-    public override bool TryWrite<T>(ReadOnlySpan<T> source)
+    public override unsafe bool TryWrite<T>(ReadOnlySpan<T> source)
     {
         if (source.IsEmpty)
         {
             lock (_lock)
             {
-                return _storage.IsOpen;
+                return IsWritingAllowedLocked();
             }
         }
 
@@ -467,6 +599,11 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
+                if (!IsWritingAllowedLocked())
+                {
+                    return false;
+                }
+
                 bool completed = TryWriteCore(src, source.Length);
                 if (completed)
                 {
@@ -504,13 +641,29 @@ internal abstract unsafe class WaitableRingBuffer
 
     protected abstract bool TryWriteScalar<T>(T value) where T : unmanaged;
 
-    protected abstract int ReadCore<T>(T* destination, int count) where T : unmanaged;
+    protected abstract unsafe int ReadCore<T>(T* destination, int count) where T : unmanaged;
 
-    protected abstract bool TryReadCore<T>(T* destination, int count) where T : unmanaged;
+    protected abstract unsafe bool TryReadCore<T>(T* destination, int count) where T : unmanaged;
 
-    protected abstract int WriteCore<T>(T* source, int count) where T : unmanaged;
+    protected abstract unsafe int WriteCore<T>(T* source, int count) where T : unmanaged;
 
-    protected abstract bool TryWriteCore<T>(T* source, int count) where T : unmanaged;
+    protected abstract unsafe bool TryWriteCore<T>(T* source, int count) where T : unmanaged;
+
+    private bool IsReadingAllowedLocked() =>
+        _storage.IsOpen &&
+        !_isReadingCompleted &&
+        !_isAborted;
+
+    private bool IsWritingAllowedLocked() =>
+        _storage.IsOpen &&
+        !_isWritingCompleted &&
+        !_isReadingCompleted &&
+        !_isAborted;
+
+    private void WakeLifecycleWaitersLocked()
+    {
+        _storedByteCount.Close();
+    }
 
     private void PublishStoredLocked()
     {
@@ -522,18 +675,15 @@ internal abstract unsafe class WaitableRingBuffer
 
     private LongResult WaitForStoredBytes(long required)
     {
-        return _storedByteCount.WaitHighMarkValue(required);
+        return _storedByteCount.WaitGreaterOrEqualTo(required);
     }
 
     private LongResult WaitForFreeBytes(long required)
     {
-        return _storedByteCount.WaitLowMarkValue(_byteCapacity - required);
+        return _storedByteCount.WaitLessOrEqualTo(_byteCapacity - required);
     }
 
     private bool CanFit(long required) => required <= _byteCapacity;
-
-    private static bool ContinueAfterWait(LongResult result) =>
-        result.Status == ResultStatus.SUCCESS;
 
     private int ReadSpan(in IntegralSpan destination, bool validate)
     {
@@ -554,12 +704,14 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsReadingAllowedLocked())
                 {
                     return 0;
                 }
 
-                if (required == 0 || _storage.StoredBytes >= required)
+                if (required == 0 ||
+                    _storage.StoredBytes >= required ||
+                    _isWritingCompleted)
                 {
                     int count = ReadIntegralSpan(destination);
                     PublishStoredLocked();
@@ -567,10 +719,7 @@ internal abstract unsafe class WaitableRingBuffer
                 }
             }
 
-            if (!ContinueAfterWait(WaitForStoredBytes(required)))
-            {
-                return 0;
-            }
+            _ = WaitForStoredBytes(required);
         }
     }
 
@@ -593,7 +742,7 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsWritingAllowedLocked())
                 {
                     return 0;
                 }
@@ -606,10 +755,7 @@ internal abstract unsafe class WaitableRingBuffer
                 }
             }
 
-            if (!ContinueAfterWait(WaitForFreeBytes(required)))
-            {
-                return 0;
-            }
+            _ = WaitForFreeBytes(required);
         }
     }
 
@@ -630,27 +776,25 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsReadingAllowedLocked())
                 {
                     return 0;
                 }
 
-                if (_storage.StoredBytes >= required)
+                if (_storage.StoredBytes >= required || _isWritingCompleted)
                 {
-                    int count = _storage.Read(destination);
+                    int available = Math.Min(required, _storage.StoredBytes);
+                    int count = _storage.Read(destination[..available]);
                     PublishStoredLocked();
                     return count;
                 }
             }
 
-            if (!ContinueAfterWait(WaitForStoredBytes(required)))
-            {
-                return 0;
-            }
+            _ = WaitForStoredBytes(required);
         }
     }
 
-    private int ReadBytes(byte* destination, int required)
+    private unsafe int ReadBytes(byte* destination, int required)
     {
         if (required == 0)
         {
@@ -666,23 +810,21 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsReadingAllowedLocked())
                 {
                     return 0;
                 }
 
-                if (_storage.StoredBytes >= required)
+                if (_storage.StoredBytes >= required || _isWritingCompleted)
                 {
-                    int count = _storage.Read(destination, required);
+                    int available = Math.Min(required, _storage.StoredBytes);
+                    int count = _storage.Read(destination, available);
                     PublishStoredLocked();
                     return count;
                 }
             }
 
-            if (!ContinueAfterWait(WaitForStoredBytes(required)))
-            {
-                return 0;
-            }
+            _ = WaitForStoredBytes(required);
         }
     }
 
@@ -703,7 +845,7 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsWritingAllowedLocked())
                 {
                     return 0;
                 }
@@ -716,14 +858,11 @@ internal abstract unsafe class WaitableRingBuffer
                 }
             }
 
-            if (!ContinueAfterWait(WaitForFreeBytes(required)))
-            {
-                return 0;
-            }
+            _ = WaitForFreeBytes(required);
         }
     }
 
-    private int WriteBytes(byte* source, int required)
+    private unsafe int WriteBytes(byte* source, int required)
     {
         if (required == 0)
         {
@@ -739,7 +878,7 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsWritingAllowedLocked())
                 {
                     return 0;
                 }
@@ -752,14 +891,11 @@ internal abstract unsafe class WaitableRingBuffer
                 }
             }
 
-            if (!ContinueAfterWait(WaitForFreeBytes(required)))
-            {
-                return 0;
-            }
+            _ = WaitForFreeBytes(required);
         }
     }
 
-    private int ReadValues<T>(Span<T> destination)
+    private unsafe int ReadValues<T>(Span<T> destination)
         where T : unmanaged
     {
         if (destination.IsEmpty)
@@ -777,17 +913,22 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsReadingAllowedLocked())
                 {
                     return 0;
                 }
 
-                if (_storage.StoredBytes >= requiredBytes)
+                if (_storage.StoredBytes >= requiredBytes || _isWritingCompleted)
                 {
+                    int availableValues =
+                        _storage.StoredBytes / Unsafe.SizeOf<T>();
+                    int finalCount = Math.Min(
+                        destination.Length,
+                        availableValues);
                     int count;
                     fixed (T* dst = destination)
                     {
-                        count = ReadCore(dst, destination.Length);
+                        count = ReadCore(dst, finalCount);
                     }
 
                     PublishStoredLocked();
@@ -795,14 +936,11 @@ internal abstract unsafe class WaitableRingBuffer
                 }
             }
 
-            if (!ContinueAfterWait(WaitForStoredBytes(requiredBytes)))
-            {
-                return 0;
-            }
+            _ = WaitForStoredBytes(requiredBytes);
         }
     }
 
-    private int WriteValues<T>(ReadOnlySpan<T> source)
+    private unsafe int WriteValues<T>(ReadOnlySpan<T> source)
         where T : unmanaged
     {
         if (source.IsEmpty)
@@ -820,7 +958,7 @@ internal abstract unsafe class WaitableRingBuffer
         {
             lock (_lock)
             {
-                if (!_storage.IsOpen)
+                if (!IsWritingAllowedLocked())
                 {
                     return 0;
                 }
@@ -838,10 +976,255 @@ internal abstract unsafe class WaitableRingBuffer
                 }
             }
 
-            if (!ContinueAfterWait(WaitForFreeBytes(requiredBytes)))
+            _ = WaitForFreeBytes(requiredBytes);
+        }
+    }
+
+
+    // IBulkRingBufferAsync >>
+
+    public async ValueTask<LongResult> ReadAsync<T>(T[] destination, int offset, int count) 
+        where T : unmanaged
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(checked(offset + count), destination.Length);
+
+        if (count == 0)
+        {
+            return LongResult.SUCCESS;
+        }
+
+        long requiredBytes = (long)count * Unsafe.SizeOf<T>();
+        if (!CanFit(requiredBytes))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        while (true)
+        {
+            lock (_lock)
             {
-                return 0;
+                if (!IsReadingAllowedLocked())
+                {
+                    return LongResult.CLOSED;
+                }
+
+                if (_storage.StoredBytes >= requiredBytes || _isWritingCompleted)
+                {
+                    int countRead = ReadAsyncFinalLocked(destination, offset, count);
+                    return LongResult.Success(countRead);
+                }
+            }
+
+            var waitResult = await WaitForStoredBytesAsync(requiredBytes);
+            if (waitResult.Status == ResultStatus.CLOSED)
+            {
+                // Allow pending read to do a partial read after writing is completed.
+                continue;
+            }
+
+            if (!waitResult)
+            {
+                return waitResult;
             }
         }
+    }
+
+    public unsafe ValueTask<LongResult> ReadAsync<T>(T* destination, int offset, int count)
+        where T : unmanaged
+    {
+        IntegralBufferGuards.ValidatePointer(destination, offset, count, nameof(destination));
+        return ReadAsyncInternal(new UnsafePtrSpan<T>(destination, offset, count));
+    }
+
+    private async ValueTask<LongResult> ReadAsyncInternal<T>(UnsafePtrSpan<T> ptrSpan) 
+        where T : unmanaged
+    {
+        if (ptrSpan.Count == 0)
+        {
+            return LongResult.SUCCESS;
+        }
+
+        long requiredBytes = (long)ptrSpan.Count * Unsafe.SizeOf<T>();
+        if (!CanFit(requiredBytes))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        while (true)
+        {
+            lock (_lock)
+            {
+                if (!IsReadingAllowedLocked())
+                {
+                    return LongResult.CLOSED;
+                }
+
+                if (_storage.StoredBytes >= requiredBytes || _isWritingCompleted)
+                {
+                    int countRead = ReadAsyncFinalLocked(ptrSpan);
+                    return LongResult.Success(countRead);
+                }
+            }
+
+            var waitResult = await WaitForStoredBytesAsync(requiredBytes);
+            if (waitResult.Status == ResultStatus.CLOSED)
+            {
+                // Allow pending read to do a partial read after writing is completed.
+                continue;
+            }
+
+            if (!waitResult)
+            {
+                return waitResult;
+            }
+        }
+    }
+
+    public async ValueTask<LongResult> WriteAsync<T>(T[] source, int offset, int count)
+        where T : unmanaged
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(checked(offset + count), source.Length);
+
+        if (count == 0)
+        {
+            return LongResult.SUCCESS;
+        }
+
+        long requiredBytes = (long)count * Unsafe.SizeOf<T>();
+        if (!CanFit(requiredBytes))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        while (true)
+        {
+            lock (_lock)
+            {
+                if (!IsWritingAllowedLocked())
+                {
+                    return LongResult.CLOSED;
+                }
+
+                if (_storage.FreeBytes >= requiredBytes)
+                {
+                    int countWriten = WriteAsyncFinalLocked(source, offset, count);
+                    return LongResult.Success(countWriten);
+                }
+            }
+
+            var waitResult = await WaitForFreeBytesAsync(requiredBytes);
+            if (!waitResult)
+            {
+                return waitResult;
+            }
+        }
+    }
+
+    public unsafe ValueTask<LongResult> WriteAsync<T>(T* source, int offset, int count)
+        where T : unmanaged
+    {
+        IntegralBufferGuards.ValidatePointer(source, offset, count, nameof(source));
+        return WriteAsync(new UnsafePtrSpan<T>(source, offset, count));
+    }
+
+    private async ValueTask<LongResult> WriteAsync<T>(UnsafePtrSpan<T> ptrSpan)
+        where T : unmanaged
+    {
+        if (ptrSpan.Count == 0)
+        {
+            return LongResult.SUCCESS;
+        }
+
+        long requiredBytes = (long)ptrSpan.Count * Unsafe.SizeOf<T>();
+        if (!CanFit(requiredBytes))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        while (true)
+        {
+            lock (_lock)
+            {
+                if (!IsWritingAllowedLocked())
+                {
+                    return LongResult.CLOSED;
+                }
+
+                if (_storage.FreeBytes >= requiredBytes)
+                {
+                    int countWriten = WriteAsyncFinalLocked(ptrSpan);
+                    return LongResult.Success(countWriten);
+                }
+            }
+
+            var waitResult = await WaitForFreeBytesAsync(requiredBytes);
+            if (!waitResult)
+            {
+                return waitResult;
+            }
+        }
+    }
+
+    private unsafe int ReadAsyncFinalLocked<T>(T[] destination, int offset, int count)
+        where T : unmanaged
+    {
+        int availableValues = _storage.StoredBytes / Unsafe.SizeOf<T>();
+        int finalCount = Math.Min(count, availableValues);
+        int readCount = 0;
+
+        fixed (T* dst = &destination[offset])
+        {
+            readCount = ReadCore(dst, finalCount);
+        }
+
+        PublishStoredLocked();
+        return readCount;
+    }
+
+    private unsafe int ReadAsyncFinalLocked<T>(UnsafePtrSpan<T> spanPtr)
+        where T : unmanaged
+    {
+        int availableValues = _storage.StoredBytes / Unsafe.SizeOf<T>();
+        int finalCount = Math.Min(spanPtr.Count, availableValues);
+        int readCount = ReadCore(spanPtr.OffsetPtr, finalCount);
+        PublishStoredLocked();
+        return readCount;
+    }
+
+    private unsafe int WriteAsyncFinalLocked<T>(T[] source, int offset, int count) 
+        where T : unmanaged
+    {
+        int countWriten = 0;
+        fixed (T* src = &source[offset])
+        {
+            countWriten = WriteCore(src, count);
+        }
+
+        PublishStoredLocked();
+        return countWriten;
+    }
+
+    private unsafe int WriteAsyncFinalLocked<T>(UnsafePtrSpan<T> spanPtr) 
+        where T : unmanaged
+    {
+        int countWriten = WriteCore(spanPtr.OffsetPtr, spanPtr.Count);
+        PublishStoredLocked();
+        return countWriten;
+    }
+
+    private ValueTask<LongResult> WaitForStoredBytesAsync(long required)
+    {
+        return _storedByteCount.WaitGreaterOrEqualToAsync(required);
+    }
+
+    private ValueTask<LongResult> WaitForFreeBytesAsync(long required)
+    {
+        return _storedByteCount.WaitLessOrEqualToAsync(_byteCapacity - required);
     }
 }

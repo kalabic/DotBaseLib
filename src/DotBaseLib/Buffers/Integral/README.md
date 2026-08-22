@@ -33,6 +33,25 @@ immediately. Closure before fulfillment has the same status result. `Try*` stay
 non-blocking and atomic. Exceptions are reserved for malformed arguments and
 invalid checked descriptors.
 
+## Waitable producer-consumer lifecycle
+
+`CompleteWriting()` publishes producer EOF without closing native storage. Buffered
+data remains readable. A final non-`Try` byte read may be short, a generic read moves
+only complete values, and an `IntegralSpan` read moves only complete blocks. After the
+buffer drains, reads return `0` or `false`. `TryRead` remains immediate and atomic.
+
+`CompleteReading()` stops both sides and discards buffered data. `Abort(error)` does
+the same while retaining the first abort error in `AbortError`. These commands are
+idempotent and wake blocked readers and writers. They do not release native storage;
+only `Close()` or disposal does that.
+
+`IsWritingCompleted` and `IsReadingCompleted` report normal endpoint completion,
+`IsAborted` reports abort, and `IsDrained` means writing completed and no bytes remain.
+Writes are rejected after either endpoint completes or the ring aborts. Reads remain
+permitted after writing completes so that buffered data can drain, but are rejected
+after reading completes or the ring aborts. Operational termination uses the existing
+`0` / `false` results; inspect `AbortError` for abort diagnostics.
+
 ## Scalar API migration
 
 Scalar reads and writes report operational failure explicitly:

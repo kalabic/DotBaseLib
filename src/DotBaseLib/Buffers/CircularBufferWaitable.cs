@@ -1,4 +1,4 @@
-﻿using DotBase.Tools;
+﻿using DotBase.AsyncValue;
 
 namespace DotBase.Buffers;
 
@@ -13,7 +13,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 {
     private readonly object _lock = new object();
 
-    private readonly WaitableHighLowMarkValue _storedByteCount = new();
+    private readonly SimpleWaitableLongValue _storedByteCount = new();
 
     public CircularBufferWaitable(int size)
         : base(size)
@@ -113,7 +113,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     private bool WaitForFreeSpace(int length)
     {
-        return _storedByteCount.WaitLowMarkValue(ByteCapacity - length);
+        return _storedByteCount.WaitLessOrEqualTo(ByteCapacity - length);
     }
 
     //
@@ -122,7 +122,7 @@ public class CircularBufferWaitable : CircularBufferUnlocked
 
     private bool WaitForStoredData(int length)
     {
-        return _storedByteCount.WaitHighMarkValue(length);
+        return _storedByteCount.WaitGreaterOrEqualTo(length);
     }
 
     public override int Read(byte[] data, int offset, int length)

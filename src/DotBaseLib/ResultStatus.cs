@@ -1,4 +1,4 @@
-﻿namespace DotBase.AsyncValue;
+﻿namespace DotBase;
 
 
 /// <summary>
@@ -8,7 +8,12 @@
 /// </summary>
 public enum ResultStatus : int
 {
-    SUCCESS = 0,
+    NONE = 0,
+
+    SUCCESS = 1,
+
+
+    // Error codes >>
 
     FAILED = -1,
 
@@ -43,11 +48,11 @@ public static class ResultStatusMethods
 
     public static bool IsError(this ResultStatus status)
     {
-        return status != ResultStatus.SUCCESS;
+        return status < 0;
     }
 
-    public static ValueTask<LongResult> AsValueTask(this ResultStatus status)
+    public static bool IsNone(this ResultStatus status)
     {
-        return ValueTask.FromResult((LongResult)status);
+        return status == 0;
     }
 }

@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 
-namespace DotBase.AsyncValue;
+namespace DotBase;
 
 
 /// <summary>
@@ -158,6 +158,8 @@ public readonly struct LongResult
     //
     //-------------------------------------------------------------------------
 
+    public static readonly LongResult NONE = new(ResultStatus.NONE);
+
     public static readonly LongResult SUCCESS = new(ResultStatus.SUCCESS);
 
     public static readonly LongResult FAILED = new(ResultStatus.FAILED);
@@ -206,6 +208,9 @@ public readonly struct LongResult
     {
         switch (other)
         {
+            case ResultStatus.NONE:
+                return NONE;
+
             case ResultStatus.SUCCESS:
                 return SUCCESS;
 
