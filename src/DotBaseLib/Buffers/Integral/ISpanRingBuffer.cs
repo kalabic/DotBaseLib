@@ -2,9 +2,8 @@ namespace DotBase.Buffers.Integral;
 
 
 /// <summary>
-/// Generic span operations. Unlocked and locked implementations are partial and
-/// nonblocking. Waitable implementations wait for the entire request only when it can
-/// fit; otherwise they return <c>0</c>.
+/// Partial, non-waiting generic span operations. Each method transfers as many
+/// complete values as immediately fit and returns <c>0</c> on operational failure.
 /// </summary>
 public interface ISpanRingBuffer : IByteRingBuffer
 {

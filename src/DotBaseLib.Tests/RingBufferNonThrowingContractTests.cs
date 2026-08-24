@@ -28,7 +28,7 @@ public class RingBufferNonThrowingContractTests
 
     [Theory]
     [MemberData(nameof(AllVariants))]
-    public void ByteCapacityBoundariesFollowVariantContract(
+    public void ByteCapacityBoundariesArePartialForAllVariants(
         RingKind kind,
         ByteOrder byteOrder)
     {
@@ -36,7 +36,7 @@ public class RingBufferNonThrowingContractTests
         using (IIntegralRingBuffer ring = Create(kind, 4, byteOrder))
         {
             long writtenBefore = GetCounter(ring, "TotalWritten");
-            int expected = kind == RingKind.Waitable ? 0 : 4;
+            const int expected = 4;
             Assert.Equal(expected, ring.Write(oversized, 0, oversized.Length));
             Assert.Equal(expected, ring.StoredBytes);
             Assert.Equal(writtenBefore + expected, GetCounter(ring, "TotalWritten"));

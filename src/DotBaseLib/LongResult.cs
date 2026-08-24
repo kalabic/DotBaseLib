@@ -19,6 +19,10 @@ public readonly struct LongResult
 
     /// <summary> Creates a successful result containing the optional <paramref name="value"/>.</summary>
     public static LongResult Success(long value = 0) { return new LongResult(value); }
+    public static LongResult Success(int value) { return new LongResult(value); }
+
+    /// <summary> Creates a successful result containing the optional <paramref name="value"/>.</summary>
+    public static LongResult Failed(Exception? ex) { return (ex is not null) ? LongResult.EXCEPTION : FAILED; }
 
     /// <summary> Creates a cancelled result containing the optional <paramref name="value"/>.</summary>
     public static LongResult Canceled(long value = 0) { return new LongResult(value, ResultStatus.CANCELED); }

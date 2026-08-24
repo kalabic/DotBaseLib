@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using DotBase;
 using DotBase.Buffers;
 using DotBase.Buffers.Integral;
 using DotBase.Integral;
@@ -157,7 +158,7 @@ public class IntegralRingBufferLifecycleTests
 
     [Theory]
     [MemberData(nameof(BothOrders))]
-    public async Task WriterCompletionUnblocksFinalPartialByteRead(
+    public void PartialByteReadDoesNotWaitForWriterCompletion(
         ByteOrder byteOrder)
     {
         using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
@@ -167,26 +168,16 @@ public class IntegralRingBufferLifecycleTests
         byte[] destination = new byte[4];
         Assert.Equal(2, ring.Write(source, 0, source.Length));
 
-        using ManualResetEventSlim started = new();
-        Task<int> readTask = Task.Run(() =>
-        {
-            started.Set();
-            return ring.Read(destination, 0, destination.Length);
-        });
-
-        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-        await AssertBlocked(readTask);
-        ring.CompleteWriting();
-
-        Assert.Equal(2, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(2, ring.Read(destination, 0, destination.Length));
         Assert.Equal(source, destination[..source.Length]);
+        ring.CompleteWriting();
         Assert.True(ring.IsDrained);
         Assert.Equal(0, ring.Read(destination, 0, destination.Length));
     }
 
     [Theory]
     [MemberData(nameof(BothOrders))]
-    public async Task WriterCompletionUnblocksFinalCompleteValueRead(
+    public void PartialValueReadDoesNotWaitForWriterCompletion(
         ByteOrder byteOrder)
     {
         using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
@@ -196,25 +187,15 @@ public class IntegralRingBufferLifecycleTests
         Assert.True(ring.TryWrite(22));
 
         int[] destination = new int[3];
-        using ManualResetEventSlim started = new();
-        Task<int> readTask = Task.Run(() =>
-        {
-            started.Set();
-            return ring.Read(destination.AsSpan());
-        });
-
-        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-        await AssertBlocked(readTask);
-        ring.CompleteWriting();
-
-        Assert.Equal(2, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(2, ring.Read(destination.AsSpan()));
         Assert.Equal([11, 22, 0], destination);
+        ring.CompleteWriting();
         Assert.True(ring.IsDrained);
     }
 
     [Theory]
     [MemberData(nameof(BothOrders))]
-    public async Task WriterCompletionReadsOnlyCompleteIntegralSpanBlocks(
+    public void PartialIntegralSpanReadMovesOnlyCompleteBlocks(
         ByteOrder byteOrder)
     {
         using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
@@ -237,18 +218,7 @@ public class IntegralRingBufferLifecycleTests
                     blockCapacity: 2);
             }
 
-            using ManualResetEventSlim started = new();
-            Task<int> readTask = Task.Run(() =>
-            {
-                started.Set();
-                return ring.Read(span);
-            });
-
-            Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-            await AssertBlocked(readTask);
-            ring.CompleteWriting();
-
-            Assert.Equal(2, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(2, ring.Read(span));
             Assert.Equal([10, 20, 0, 0], destination);
             Assert.Equal(sizeof(int), ring.StoredBytes);
 
@@ -256,6 +226,7 @@ public class IntegralRingBufferLifecycleTests
             Assert.Equal(
                 trailing.Length,
                 ring.Read(trailing, 0, trailing.Length));
+            ring.CompleteWriting();
             Assert.True(ring.IsDrained);
         }
         finally
@@ -266,7 +237,7 @@ public class IntegralRingBufferLifecycleTests
 
     [Theory]
     [MemberData(nameof(BothOrders))]
-    public async Task WriterCompletionLeavesScalarTrailingBytesReadable(
+    public void PartialScalarReadFailsImmediatelyWithTrailingBytes(
         ByteOrder byteOrder)
     {
         using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
@@ -275,20 +246,7 @@ public class IntegralRingBufferLifecycleTests
         byte[] trailing = [0xA1, 0xB2];
         Assert.Equal(2, ring.Write(trailing, 0, trailing.Length));
 
-        using ManualResetEventSlim started = new();
-        Task<(bool Success, int Value)> readTask = Task.Run(() =>
-        {
-            started.Set();
-            bool success = ring.Read(out int value);
-            return (success, value);
-        });
-
-        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-        await AssertBlocked(readTask);
-        ring.CompleteWriting();
-
-        (bool success, int value) = await readTask.WaitAsync(
-            TimeSpan.FromSeconds(5));
+        bool success = ring.Read(out int value);
         Assert.False(success);
         Assert.Equal(default, value);
         Assert.Equal(2, ring.StoredBytes);
@@ -296,7 +254,58 @@ public class IntegralRingBufferLifecycleTests
         byte[] destination = new byte[2];
         Assert.Equal(2, ring.Read(destination, 0, destination.Length));
         Assert.Equal(trailing, destination);
+        ring.CompleteWriting();
         Assert.True(ring.IsDrained);
+    }
+
+    [Theory]
+    [MemberData(nameof(BothOrders))]
+    public async Task WritingCompletionFailsExactReadWithoutPartialMutation(
+        ByteOrder byteOrder)
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            2 * sizeof(int),
+            byteOrder);
+        Assert.True(ring.TryWrite(11));
+
+        int[] destination = new int[2];
+        Task<int> readTask = Task.Run(() => ring.ReadExact(destination.AsSpan()));
+        await AssertBlocked(readTask);
+
+        ring.CompleteWriting();
+
+        Assert.Equal(0, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal([0, 0], destination);
+        Assert.Equal(sizeof(int), ring.StoredBytes);
+        Assert.True(ring.Read(out int value));
+        Assert.Equal(11, value);
+    }
+
+    [Theory]
+    [MemberData(nameof(BothOrders))]
+    public async Task WritingCompletionFailsExactAsyncReadWithoutPartialMutation(
+        ByteOrder byteOrder)
+    {
+        using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
+            2 * sizeof(int),
+            byteOrder);
+        Assert.True(ring.TryWrite(11));
+
+        int[] destination = new int[2];
+        ValueTask<LongResult> pending = ring.ReadExactAsync(
+            destination,
+            0,
+            destination.Length);
+        Assert.False(pending.IsCompleted);
+
+        ring.CompleteWriting();
+        LongResult result = await pending.AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(ResultStatus.CLOSED, result.Status);
+        Assert.Equal([0, 0], destination);
+        Assert.Equal(sizeof(int), ring.StoredBytes);
+        Assert.True(ring.Read(out int value));
+        Assert.Equal(11, value);
     }
 
     [Theory]
@@ -314,7 +323,7 @@ public class IntegralRingBufferLifecycleTests
         Task<int> readTask = Task.Run(() =>
         {
             started.Set();
-            return ring.Read(destination, 0, destination.Length);
+            return ring.ReadExact(destination, 0, destination.Length);
         });
 
         Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
@@ -343,7 +352,7 @@ public class IntegralRingBufferLifecycleTests
         Task<int> writeTask = Task.Run(() =>
         {
             started.Set();
-            return ring.Write(source, 0, source.Length);
+            return ring.WriteExact(source, 0, source.Length);
         });
 
         Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
@@ -571,7 +580,7 @@ public class IntegralRingBufferLifecycleTests
 
     [Theory]
     [MemberData(nameof(BothOrders))]
-    public async Task FinalPartialByteReadSupportsWrapAround(ByteOrder byteOrder)
+    public void PartialByteReadSupportsWrapAround(ByteOrder byteOrder)
     {
         using IWaitableRingBuffer ring = IntegralRingBuffer.CreateWaitable(
             8,
@@ -587,19 +596,9 @@ public class IntegralRingBufferLifecycleTests
         Assert.Equal(wrapped.Length, ring.Write(wrapped, 0, wrapped.Length));
 
         byte[] destination = new byte[8];
-        using ManualResetEventSlim started = new();
-        Task<int> readTask = Task.Run(() =>
-        {
-            started.Set();
-            return ring.Read(destination, 0, destination.Length);
-        });
-
-        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-        await AssertBlocked(readTask);
-        ring.CompleteWriting();
-
-        Assert.Equal(6, await readTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(6, ring.Read(destination, 0, destination.Length));
         Assert.Equal([5, 6, 7, 8, 9, 10], destination[..6]);
+        ring.CompleteWriting();
         Assert.True(ring.IsDrained);
     }
 
@@ -662,7 +661,7 @@ public class IntegralRingBufferLifecycleTests
             while (offset < source.Length)
             {
                 int count = Math.Min(31, source.Length - offset);
-                int written = ring.Write(source, offset, count);
+                int written = ring.WriteExact(source, offset, count);
                 Assert.Equal(count, written);
                 offset += written;
             }
@@ -679,7 +678,13 @@ public class IntegralRingBufferLifecycleTests
                 int count = ring.Read(chunk, 0, chunk.Length);
                 if (count == 0)
                 {
-                    return output.ToArray();
+                    if (ring.IsDrained)
+                    {
+                        return output.ToArray();
+                    }
+
+                    Thread.Yield();
+                    continue;
                 }
 
                 output.Write(chunk, 0, count);

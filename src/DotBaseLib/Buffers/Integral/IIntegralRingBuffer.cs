@@ -3,13 +3,13 @@ using DotBase.Integral;
 namespace DotBase.Buffers.Integral;
 
 
-public interface IIntegralRingBuffer :
-    IDisposable,
-    IByteRingBuffer,
-    IAtomicBulkRingBuffer,
-    IBulkRingBuffer,
-    IScalarRingBuffer,
-    ISpanRingBuffer
+public interface IIntegralRingBuffer
+    : IDisposable
+    , IByteRingBuffer
+    , IAtomicBulkRingBuffer
+    , IBulkRingBuffer
+    , IScalarRingBuffer
+    , ISpanRingBuffer
 {
     ByteOrder ByteOrder { get; }
 

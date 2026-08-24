@@ -55,7 +55,7 @@ public class IntegralRingBufferTests
     }
 
     [Fact]
-    public async Task WaitableReadsRequireTheCompleteRequestForEveryRepresentation()
+    public async Task WaitableExactReadsRequireTheCompleteRequestForEveryRepresentation()
     {
         await RunWaitableCase<byte>(1, 2);
         await RunWaitableCase<sbyte>(1, 2);
@@ -370,7 +370,7 @@ public class IntegralRingBufferTests
             () =>
             {
                 started.Set();
-                return ring.Read<T>(
+                return ring.ReadExact<T>(
                     destination,
                     0,
                     destination.Length);
