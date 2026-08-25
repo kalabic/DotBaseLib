@@ -13,6 +13,8 @@ public interface IIntegralRingBuffer
 {
     ByteOrder ByteOrder { get; }
 
+    IntegralFormat Format { get; }
+
     int CapacityAs<T>()
         where T : unmanaged;
 
@@ -24,6 +26,8 @@ public interface IIntegralRingBuffer
 
     void AdvanceBy<T>(int count)
         where T : unmanaged;
+
+    int CapacityAsBlockCount();
 
     /// <summary>
     /// <para>

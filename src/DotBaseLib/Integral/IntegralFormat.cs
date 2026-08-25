@@ -19,6 +19,12 @@ public readonly struct IntegralFormat
     /// <summary>Empty / no-buffer sentinel.</summary>
     public static readonly IntegralFormat Empty = new IntegralFormat(0, 0);
 
+    public static readonly IntegralFormat ByteStream = new IntegralFormat(IntegralType.UInt8, 1);
+
+    public static readonly IntegralFormat BigEndianStream = new IntegralFormat(IntegralType.UInt8, 1, ByteOrder.BigEndian);
+
+    public static readonly IntegralFormat LittleEndianStream = new IntegralFormat(IntegralType.UInt8, 1, ByteOrder.LittleEndian);
+
     public ByteOrder ByteOrder { get { return _valueFormat.ByteOrder; } }
 
     /// <summary> Number of bytes occupied by a complete block of integral values. </summary>

@@ -1,3 +1,4 @@
+using DotBase.Buffers.Await;
 using DotBase.Integral;
 
 namespace DotBase.Buffers.Integral;
@@ -14,6 +15,9 @@ namespace DotBase.Buffers.Integral;
 public interface IWaitableRingBuffer 
     : IIntegralRingBuffer
     , IIntegralRingBufferAsync
+    , IAwaitBlockStream
+    , IAwaitByteStream
+    , IAwaitValueStream
 {
     event EventHandler<BufferReadingCompleted>? ReadingCompleted;
 
@@ -56,9 +60,6 @@ public interface IWaitableRingBuffer
     /// </summary>
     void Abort(Exception? error = null);
 
-    ValueTask<LongResult> WaitForStoredBytesAsync(long required);
-
-    ValueTask<LongResult> WaitForFreeBytesAsync(long required);
 
     // byte[] >>
 

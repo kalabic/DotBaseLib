@@ -8,11 +8,25 @@ internal abstract class IntegralRingBufferBase
     : DisposableBase
     , IIntegralRingBuffer
 {
+    public IntegralFormat Format { get { return _format; } }
+
+    protected readonly IntegralFormat _format;
+
     protected RingBufferStorage _storage;
 
-    internal IntegralRingBufferBase(int capacity)
+    internal IntegralRingBufferBase(int capacity, IntegralFormat format)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(capacity);
+        if (capacity > 0 && (!format.IsValid() || format.IsEmptyType()))
+        {
+            throw new ArgumentException("Invalid format.", nameof(format));
+        }
+        else if (capacity == 0 && !format.IsValid())
+        {
+            throw new ArgumentException("Invalid format.", nameof(format));
+        }
+
+        _format = format;
         _storage = new RingBufferStorage(capacity);
     }
 
@@ -37,6 +51,7 @@ internal abstract class IntegralRingBufferBase
     public abstract ByteOrder ByteOrder { get; }
     public abstract void Advance(int count);
     public abstract void AdvanceBy<T>(int count) where T : unmanaged;
+    public abstract int CapacityAsBlockCount();
     public abstract int CapacityAs<T>() where T : unmanaged;
     public abstract void ClearBuffer();
     public abstract void Close();

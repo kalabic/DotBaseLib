@@ -23,8 +23,8 @@ internal abstract unsafe class UnlockedRingBuffer
     /// </summary>
     private IntegralSpan _slab;
 
-    internal UnlockedRingBuffer(int capacity)
-        : base(capacity)
+    internal UnlockedRingBuffer(int capacity, IntegralFormat format)
+        : base(capacity, format)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(capacity);
         _slab = CreateSlabView();
@@ -57,6 +57,11 @@ internal abstract unsafe class UnlockedRingBuffer
         }
 
         base.Dispose(disposing);
+    }
+
+    public override int CapacityAsBlockCount()
+    {
+        return (_format.BytesPerBlock > 0) ? (int)(_storage.ByteCapacity / _format.BytesPerBlock) : 0;
     }
 
     public override int CapacityAs<T>()

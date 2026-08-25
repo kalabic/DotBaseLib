@@ -22,4 +22,11 @@ public interface IByteRingBufferAsync
     unsafe ValueTask<LongResult> ReadExactAsync(byte* destination, int offset, int count);
 
     unsafe ValueTask<LongResult> WriteExactAsync(byte* source, int offset, int count);
+
+
+    // Public wait APIs:
+
+    ValueTask<LongResult> WaitForStoredBytesAsync(long byteCount = 1);
+
+    ValueTask<LongResult> WaitForFreeBytesAsync(long byteCount = 1);
 }

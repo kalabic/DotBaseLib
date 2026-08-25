@@ -34,6 +34,18 @@ internal class LockedWaitableValueState
         Range = new LongValueRange();
     }
 
+    public LockedWaitableValueState(LongValueRange range)
+    {
+        _isOpen = true;
+        Value = 0;
+        Range = range;
+
+        if (Range.Compare(Value) != 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(range));
+        }
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)

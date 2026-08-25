@@ -29,4 +29,13 @@ public interface IBulkRingBufferAsync
 
     unsafe ValueTask<LongResult> WriteExactAsync<T>(T* source, int offset, int count)
         where T : unmanaged;
+
+
+    // Public wait APIs:
+
+    ValueTask<LongResult> WaitForStoredValuesAsync<T>(long valueCount = 1)
+        where T : unmanaged;
+
+    ValueTask<LongResult> WaitForFreeValuesAsync<T>(long valueCount = 1)
+        where T : unmanaged;
 }

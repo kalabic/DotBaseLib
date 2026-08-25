@@ -804,13 +804,69 @@ internal abstract partial class WaitableRingBuffer
         return countWritten;
     }
 
-    public ValueTask<LongResult> WaitForStoredBytesAsync(long required)
+    public ValueTask<LongResult> WaitForStoredBytesAsync(long byteCount = 1)
     {
-        return _storedByteCount.WaitGreaterOrEqualToAsync(required);
+        if (byteCount < 0)
+        {
+            return ValueTask.FromResult(LongResult.OUT_OF_RANGE);
+        }
+
+        return _storedByteCount.WaitGreaterOrEqualToAsync(byteCount);
     }
 
-    public ValueTask<LongResult> WaitForFreeBytesAsync(long required)
+    public ValueTask<LongResult> WaitForFreeBytesAsync(long byteCount = 1)
     {
-        return _storedByteCount.WaitLessOrEqualToAsync(_byteCapacity - required);
+        if (byteCount < 0)
+        {
+            return ValueTask.FromResult(LongResult.OUT_OF_RANGE);
+        }
+
+        return _storedByteCount.WaitLessOrEqualToAsync(_byteCapacity - byteCount);
+    }
+
+    public ValueTask<LongResult> WaitForStoredValuesAsync<T>(long valueCount = 1)
+        where T : unmanaged
+    {
+        if ((valueCount < 0) ||
+            (valueCount > CapacityAs<T>()))
+        {
+            return ValueTask.FromResult(LongResult.OUT_OF_RANGE);
+        }
+
+        return _storedByteCount.WaitGreaterOrEqualToAsync(valueCount * Unsafe.SizeOf<T>());
+    }
+
+    public ValueTask<LongResult> WaitForFreeValuesAsync<T>(long valueCount = 1)
+        where T : unmanaged
+    {
+        if ((valueCount < 0) ||
+            (valueCount > CapacityAs<T>()))
+        {
+            return ValueTask.FromResult(LongResult.OUT_OF_RANGE);
+        }
+
+        return _storedByteCount.WaitLessOrEqualToAsync(_byteCapacity - valueCount * Unsafe.SizeOf<T>());
+    }
+
+    public ValueTask<LongResult> WaitForStoredBlockAsync(long blockCount = 1)
+    {
+        if ((blockCount < 0) ||
+            (blockCount > CapacityAsBlockCount()))
+        {
+            return ValueTask.FromResult(LongResult.OUT_OF_RANGE);
+        }
+
+        return _storedByteCount.WaitGreaterOrEqualToAsync(blockCount * _format.BytesPerBlock);
+    }
+
+    public ValueTask<LongResult> WaitForFreeBlockAsync(long blockCount = 1)
+    {
+        if ((blockCount < 0) ||
+            (blockCount > CapacityAsBlockCount()))
+        {
+            return ValueTask.FromResult(LongResult.OUT_OF_RANGE);
+        }
+
+        return _storedByteCount.WaitLessOrEqualToAsync(_byteCapacity - checked(blockCount * _format.BytesPerBlock));
     }
 }

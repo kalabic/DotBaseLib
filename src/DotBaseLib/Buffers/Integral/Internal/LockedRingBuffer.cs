@@ -1,3 +1,4 @@
+using DotBase.Integral;
 using System.Runtime.CompilerServices;
 
 namespace DotBase.Buffers.Integral.Internal;
@@ -36,6 +37,14 @@ internal abstract class LockedRingBuffer
         get { lock (_lock) { return _storage.TotalWritten; } }
     }
 
+    public override int CapacityAsBlockCount()
+    {
+        lock (_lock)
+        {
+            return (_format.BytesPerBlock > 0) ? (int)(_storage.ByteCapacity / _format.BytesPerBlock) : 0;
+        }
+    }
+
     public override int CapacityAs<T>()
     {
         lock (_lock)
@@ -63,7 +72,7 @@ internal abstract class LockedRingBuffer
 
     protected readonly object _lock = new();
 
-    internal LockedRingBuffer(int capacity)
-        : base(capacity)
+    internal LockedRingBuffer(int capacity, IntegralFormat format)
+        : base(capacity, format)
     { }
 }

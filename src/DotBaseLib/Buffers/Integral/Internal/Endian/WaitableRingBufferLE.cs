@@ -12,7 +12,12 @@ internal sealed class WaitableRingBufferLE
     private const int ScratchByteCount = 512;
 
     internal WaitableRingBufferLE(int capacity)
-        : base(capacity)
+        : base(capacity, IntegralFormat.LittleEndianStream)
+    {
+    }
+
+    internal WaitableRingBufferLE(int capacity, IntegralFormat format)
+        : base(capacity, format)
     {
     }
 

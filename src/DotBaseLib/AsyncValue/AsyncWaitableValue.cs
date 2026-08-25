@@ -43,6 +43,14 @@ public class AsyncWaitableValue
         _awaiterList = new(this);
     }
 
+    public AsyncWaitableValue(LongValueRange range)
+    {
+        _state = new LockedWaitableValueState(range);
+        _lock = _state.Lock;
+        _simpleValue = new SimpleWaitableLongValue(_state);
+        _awaiterList = new(this);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)

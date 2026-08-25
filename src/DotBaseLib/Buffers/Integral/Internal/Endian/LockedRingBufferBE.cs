@@ -12,7 +12,13 @@ internal sealed class LockedRingBufferBE
     private const int ScratchByteCount = 512;
 
     internal LockedRingBufferBE(int capacity)
-        : base(capacity)
+        : base(capacity, IntegralFormat.BigEndianStream)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(capacity);
+    }
+
+    internal LockedRingBufferBE(int capacity, IntegralFormat format)
+        : base(capacity, format)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(capacity);
     }

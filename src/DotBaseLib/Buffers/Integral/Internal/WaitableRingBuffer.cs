@@ -1,4 +1,5 @@
 using DotBase.AsyncValue;
+using DotBase.Buffers.Await;
 using DotBase.Integral;
 using System.Runtime.CompilerServices;
 
@@ -32,11 +33,11 @@ internal abstract partial class WaitableRingBuffer
 
     private Exception? _abortError;
 
-    internal WaitableRingBuffer(int capacity)
-        : base(capacity)
+    internal WaitableRingBuffer(int capacity, IntegralFormat format)
+        : base(capacity, format)
     {
         _byteCapacity = capacity;
-        _storedByteCount = new AsyncWaitableValue();
+        _storedByteCount = new AsyncWaitableValue(new LongValueRange(0, capacity));
         if (!_storage.IsOpen)
         {
             _storedByteCount.Close();
@@ -189,6 +190,14 @@ internal abstract partial class WaitableRingBuffer
         lock (_lock)
         {
             return _storage.ByteCapacity / Unsafe.SizeOf<T>();
+        }
+    }
+
+    public override int CapacityAsBlockCount()
+    {
+        lock (_lock)
+        {
+            return (_format.BytesPerBlock > 0) ? (int)(_storage.ByteCapacity / _format.BytesPerBlock) : 0;
         }
     }
 
@@ -800,16 +809,6 @@ internal abstract partial class WaitableRingBuffer
         }
     }
 
-    private LongResult WaitForStoredBytes(long required)
-    {
-        return _storedByteCount.WaitGreaterOrEqualTo(required);
-    }
-
-    private LongResult WaitForFreeBytes(long required)
-    {
-        return _storedByteCount.WaitLessOrEqualTo(_byteCapacity - required);
-    }
-
     private bool CanFit(long required) => required <= _byteCapacity;
 
     private int ReadPartialSpan(in IntegralSpan destination, bool validate)
@@ -1301,5 +1300,74 @@ internal abstract partial class WaitableRingBuffer
 
             _ = WaitForFreeBytes(requiredBytes);
         }
+    }
+
+
+    // Public Wait implementation  >>
+
+    public LongResult WaitForStoredBytes(long byteCount = 1)
+    {
+        if (byteCount < 0)
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        return _storedByteCount.WaitGreaterOrEqualTo(byteCount);
+    }
+
+    public LongResult WaitForFreeBytes(long byteCount = 1)
+    {
+        if (byteCount < 0)
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        return _storedByteCount.WaitLessOrEqualTo(_byteCapacity - byteCount);
+    }
+
+    public LongResult WaitForStoredValues<T>(long valueCount = 1)
+        where T : unmanaged
+    {
+        if ((valueCount < 0) ||
+            (valueCount > CapacityAs<T>()))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        return _storedByteCount.WaitGreaterOrEqualTo(valueCount * Unsafe.SizeOf<T>());
+    }
+
+    public LongResult WaitForFreeValues<T>(long valueCount = 1)
+        where T : unmanaged
+    {
+        if ((valueCount < 0) ||
+            (valueCount > CapacityAs<T>()))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        return _storedByteCount.WaitLessOrEqualTo(_byteCapacity - checked(valueCount * Unsafe.SizeOf<T>()));
+    }
+
+    public LongResult WaitForStoredBlock(long blockCount = 1)
+    {
+        if ((blockCount < 0) ||
+            (blockCount > CapacityAsBlockCount()))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        return _storedByteCount.WaitGreaterOrEqualTo(blockCount * _format.BytesPerBlock);
+    }
+
+    public LongResult WaitForFreeBlock(long blockCount = 1)
+    {
+        if ((blockCount < 0) ||
+            (blockCount > CapacityAsBlockCount()))
+        {
+            return LongResult.OUT_OF_RANGE;
+        }
+
+        return _storedByteCount.WaitLessOrEqualTo(_byteCapacity - checked(blockCount * _format.BytesPerBlock));
     }
 }
